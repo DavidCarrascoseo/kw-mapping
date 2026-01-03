@@ -1,5 +1,5 @@
 import React from 'react';
-import { Upload, FileText, TrendingUp, Key } from 'lucide-react';
+import { Upload, FileText, TrendingUp, Brain, Cpu } from 'lucide-react';
 
 const ConfigStep = ({
   config,
@@ -19,28 +19,72 @@ const ConfigStep = ({
     <div className="bg-white rounded-lg shadow-xl p-8">
       <h2 className="text-2xl font-bold mb-6 text-gray-800">Configuración</h2>
 
-      {/* API Keys Section */}
-      <div className="mb-6 p-4 bg-amber-50 border-2 border-amber-200 rounded-lg">
-        <h3 className="font-bold text-amber-800 mb-4 flex items-center gap-2">
-          <Key size={20} />
-          API Keys
+      {/* Classification Method */}
+      <div className="mb-6 p-4 bg-indigo-50 border-2 border-indigo-200 rounded-lg">
+        <h3 className="font-bold text-indigo-800 mb-4 flex items-center gap-2">
+          <Cpu size={20} />
+          Método de Clasificación
         </h3>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-semibold mb-2 text-gray-700">
-              Anthropic API Key <span className="text-red-500">*</span>
-            </label>
+
+        <div className="space-y-3">
+          {/* Local Classification (Default) */}
+          <label className="flex items-start gap-3 cursor-pointer p-3 rounded-lg hover:bg-indigo-100 transition">
             <input
-              type="password"
-              value={config.anthropicApiKey}
-              onChange={handleChange('anthropicApiKey')}
-              className="w-full p-3 border-2 rounded-lg font-mono text-sm"
-              placeholder="sk-ant-..."
+              type="radio"
+              name="classificationMethod"
+              checked={!config.useAI}
+              onChange={() => onConfigChange({ ...config, useAI: false })}
+              className="w-5 h-5 mt-0.5 accent-indigo-600"
             />
-            <p className="text-xs text-gray-500 mt-1">
-              Obtén tu API key en console.anthropic.com
-            </p>
-          </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <Cpu className="text-indigo-600" size={18} />
+                <span className="font-semibold text-gray-800">Clasificación Local (Recomendado)</span>
+              </div>
+              <p className="text-sm text-gray-600 mt-1">
+                Usa reglas y patrones predefinidos. Rápido y sin coste adicional.
+              </p>
+            </div>
+          </label>
+
+          {/* AI Classification */}
+          <label className="flex items-start gap-3 cursor-pointer p-3 rounded-lg hover:bg-indigo-100 transition">
+            <input
+              type="radio"
+              name="classificationMethod"
+              checked={config.useAI}
+              onChange={() => onConfigChange({ ...config, useAI: true })}
+              className="w-5 h-5 mt-0.5 accent-indigo-600"
+            />
+            <div>
+              <div className="flex items-center gap-2">
+                <Brain className="text-purple-600" size={18} />
+                <span className="font-semibold text-gray-800">Clasificación con IA (Claude)</span>
+              </div>
+              <p className="text-sm text-gray-600 mt-1">
+                Clasificación semántica avanzada. Requiere API key de Anthropic.
+              </p>
+            </div>
+          </label>
+
+          {/* API Key input if AI is selected */}
+          {config.useAI && (
+            <div className="ml-8 mt-2 p-3 bg-white rounded-lg border">
+              <label className="block text-sm font-semibold mb-2 text-gray-700">
+                Anthropic API Key
+              </label>
+              <input
+                type="password"
+                value={config.anthropicApiKey}
+                onChange={handleChange('anthropicApiKey')}
+                className="w-full p-2 border-2 rounded-lg font-mono text-sm"
+                placeholder="sk-ant-..."
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Obtén tu API key en console.anthropic.com
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -86,7 +130,7 @@ const ConfigStep = ({
                   value={config.domain}
                   onChange={handleChange('domain')}
                   className="w-full p-2 border-2 rounded-lg"
-                  placeholder="ejemplo.com"
+                  placeholder="taxfix.es"
                 />
               </div>
               <div>
@@ -119,7 +163,7 @@ const ConfigStep = ({
             className="w-full h-32 p-3 border-2 rounded-lg font-mono text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition"
             value={config.sitemap}
             onChange={handleChange('sitemap')}
-            placeholder="https://ejemplo.com/pagina-1&#10;https://ejemplo.com/pagina-2&#10;..."
+            placeholder="https://taxfix.es/pagina-1&#10;https://taxfix.es/pagina-2&#10;..."
           />
         </div>
 
@@ -131,7 +175,7 @@ const ConfigStep = ({
             className="w-full h-40 p-3 border-2 rounded-lg font-mono text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition"
             value={config.urlInventory}
             onChange={handleChange('urlInventory')}
-            placeholder="https://ejemplo.com/blog/articulo-1&#10;https://ejemplo.com/servicios/servicio-1&#10;..."
+            placeholder="https://taxfix.es/blog/articulo-1&#10;https://taxfix.es/autonomos/guia&#10;..."
           />
         </div>
 
@@ -141,7 +185,7 @@ const ConfigStep = ({
             Archivo Histórico (opcional)
           </label>
           <p className="text-xs text-gray-500 mb-2">
-            Sube un CSV con clasificaciones anteriores para que la IA aprenda de tus patrones
+            Sube un CSV con clasificaciones anteriores para mejorar la precisión
           </p>
           <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed rounded-lg cursor-pointer hover:bg-gray-50 hover:border-indigo-300 transition">
             <Upload size={20} className="text-gray-400" />
@@ -157,7 +201,7 @@ const ConfigStep = ({
           </label>
           {historicalDataCount > 0 && (
             <p className="text-sm text-green-600 mt-2 font-semibold">
-              ✓ {historicalDataCount} registros cargados
+              ✓ {historicalDataCount} registros cargados - Se usarán para mejorar la clasificación
             </p>
           )}
         </div>

@@ -7,6 +7,7 @@ import ResultsStep from './ResultsStep';
 import { parseCSV, downloadCSV } from '../utils/csv';
 import { findBestURL } from '../utils/similarity';
 import { classifyKeywords } from '../services/classifier';
+import { classifyKeywordsLocally } from '../services/localClassifier';
 import { getSistrixData } from '../services/sistrix';
 
 const EXPORT_HEADERS = [
@@ -20,11 +21,12 @@ const SEOAutomator = () => {
   const [config, setConfig] = useState({
     sitemap: '',
     urlInventory: '',
-    domain: 'example.com',
+    domain: 'taxfix.es',
     country: 'es',
     useSistrix: false,
     sistrixApiKey: '',
-    anthropicApiKey: ''
+    anthropicApiKey: '',
+    useAI: false // Use local classifier by default
   });
 
   // File state
@@ -95,8 +97,9 @@ const SEOAutomator = () => {
       return;
     }
 
-    if (!config.anthropicApiKey) {
-      alert('Ingresa tu API Key de Anthropic');
+    // Check if AI is enabled but no API key
+    if (config.useAI && !config.anthropicApiKey) {
+      alert('Ingresa tu API Key de Anthropic para usar clasificación con IA');
       setStep('config');
       return;
     }
@@ -116,14 +119,26 @@ const SEOAutomator = () => {
         const keywordsToProcess = rows.map(row => row[columnMapping.keyword] || '').filter(k => k);
         setTotalCount(keywordsToProcess.length);
 
-        // Phase 1: AI Classification
+        // Phase 1: Classification (AI or Local)
         setCurrentPhase('classifying');
-        const classifications = await classifyKeywords(
-          keywordsToProcess,
-          config.anthropicApiKey,
-          historicalData,
-          (current, total) => setProcessedCount(current)
-        );
+        let classifications;
+
+        if (config.useAI && config.anthropicApiKey) {
+          // Use Claude AI for classification
+          classifications = await classifyKeywords(
+            keywordsToProcess,
+            config.anthropicApiKey,
+            historicalData,
+            (current, total) => setProcessedCount(current)
+          );
+        } else {
+          // Use local rule-based classification
+          classifications = await classifyKeywordsLocally(
+            keywordsToProcess,
+            historicalData,
+            (current, total) => setProcessedCount(current)
+          );
+        }
 
         // Build results
         const results = [];
