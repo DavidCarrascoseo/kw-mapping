@@ -11,8 +11,7 @@ import { getSistrixData, getSearchVolume } from '../services/sistrix';
 import { analyzeForExpansion, calculateSemanticSimilarity } from '../services/semanticExpansion';
 
 const EXPORT_HEADERS = [
-  'Target-URL', 'Keyword', 'SV', 'Main Category', 'Sub Category 1', 'Sub Category 2',
-  'KW Intent', 'Confidence', 'Source', 'Is Expansion'
+  'Target-URL', 'Keyword', 'SV', 'Categoría', 'Subcategoría 1', 'Subcategoría 2', 'KW Intent'
 ];
 
 const STORAGE_KEYS = {
@@ -233,15 +232,15 @@ const SEOAutomator = () => {
               await new Promise(r => setTimeout(r, 150));
             }
 
-            // All keywords in URL share the same Main Category and Sub Categories
+            // All keywords in URL share the same categories
             results.push({
               id: processedIdx,
               'Target-URL': url,
               'Keyword': kwData.keyword,
               'SV': finalVolume,
-              'Main Category': groupClassification.mainCategory,
-              'Sub Category 1': groupClassification.subCategory1 || '',
-              'Sub Category 2': groupClassification.subCategory2 || '',
+              'Categoría': groupClassification.mainCategory,
+              'Subcategoría 1': groupClassification.subCategory1 || '',
+              'Subcategoría 2': groupClassification.subCategory2 || '',
               'KW Intent': groupClassification.intent,
               '_confidence': groupClassification.subCategory1 ? 'high' : 'medium',
               '_isExpansion': false,
@@ -275,9 +274,9 @@ const SEOAutomator = () => {
                     'Target-URL': url,
                     'Keyword': related.keyword,
                     'SV': related.searchVolume || 0,
-                    'Main Category': groupClassification.mainCategory,
-                    'Sub Category 1': groupClassification.subCategory1 || '',
-                    'Sub Category 2': groupClassification.subCategory2 || '',
+                    'Categoría': groupClassification.mainCategory,
+                    'Subcategoría 1': groupClassification.subCategory1 || '',
+                    'Subcategoría 2': groupClassification.subCategory2 || '',
                     'KW Intent': groupClassification.intent,
                     '_confidence': 'medium',
                     '_isExpansion': true,

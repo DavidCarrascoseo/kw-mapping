@@ -41,11 +41,17 @@ const COMPETITORS = [
   /\bdebitoor\b/i, /\bfacturadirecta\b/i
 ];
 
+// Years to discard (past and future years)
+const YEAR_PATTERN = /\b(19\d{2}|20[0-3]\d)\b/;
+
 const shouldDiscard = (keyword) => {
   const kw = keyword.toLowerCase().trim();
 
   if (kw.length <= 2) return { discard: true, reason: 'Muy corto' };
   if (/^\d+$/.test(kw)) return { discard: true, reason: 'Solo números' };
+
+  // Discard keywords with years
+  if (YEAR_PATTERN.test(kw)) return { discard: true, reason: 'Contiene año' };
 
   for (const pattern of COMPETITORS) {
     if (pattern.test(kw)) return { discard: true, reason: 'Competidor' };

@@ -27,7 +27,7 @@ const ResultsStep = ({
     const highConfidence = processedData.filter(r => r._confidence === 'high').length;
     const categories = {};
     processedData.forEach(r => {
-      const cat = r['Main Category'] || 'Otros';
+      const cat = r['Categoría'] || 'Otros';
       categories[cat] = (categories[cat] || 0) + 1;
     });
 
@@ -280,11 +280,11 @@ const ResultsStep = ({
                         {group.keywords[0] && (
                           <>
                             <span className="text-xs bg-white/30 px-2 py-0.5 rounded font-semibold">
-                              {group.keywords[0]['Main Category']}
+                              {group.keywords[0]['Categoría']}
                             </span>
-                            {group.keywords[0]['Sub Category 1'] && (
+                            {group.keywords[0]['Subcategoría 1'] && (
                               <span className="text-xs bg-white/20 px-2 py-0.5 rounded">
-                                {group.keywords[0]['Sub Category 1']}
+                                {group.keywords[0]['Subcategoría 1']}
                               </span>
                             )}
                           </>
@@ -354,7 +354,7 @@ const ResultsStep = ({
 
                           {/* Category */}
                           <div className="col-span-2">
-                            {editingCell?.id === row.id && editingCell?.field === 'Main Category' ? (
+                            {editingCell?.id === row.id && editingCell?.field === 'Categoría' ? (
                               <div className="flex gap-1">
                                 <input
                                   type="text"
@@ -369,10 +369,10 @@ const ResultsStep = ({
                             ) : (
                               <div
                                 className="cursor-pointer hover:bg-indigo-50 rounded px-1 flex items-center gap-1 group"
-                                onClick={() => startEdit(row.id, 'Main Category', row['Main Category'])}
+                                onClick={() => startEdit(row.id, 'Categoría', row['Categoría'])}
                               >
                                 <span className="text-xs font-medium text-indigo-700 bg-indigo-100 px-2 py-1 rounded truncate">
-                                  {row['Main Category']}
+                                  {row['Categoría']}
                                 </span>
                                 <Edit2 size={10} className="text-gray-400 opacity-0 group-hover:opacity-100 flex-shrink-0" />
                               </div>
@@ -381,8 +381,8 @@ const ResultsStep = ({
 
                           {/* SubCategory */}
                           <div className="col-span-2">
-                            <span className="text-xs text-gray-500 truncate block" title={row['Sub Category 1']}>
-                              {row['Sub Category 1'] || '—'}
+                            <span className="text-xs text-gray-500 truncate block" title={row['Subcategoría 1']}>
+                              {row['Subcategoría 1'] || '—'}
                             </span>
                           </div>
 
