@@ -1,352 +1,157 @@
 /**
- * Enhanced Local Classifier - Rule-based keyword classification for Taxfix
- * Improved pattern matching with semantic understanding
+ * Enhanced Local Classifier
+ * Main Category from URL, Subcategories from keyword content
+ * All keywords in same URL share the same classification
  */
+
+// ============ URL TO MAIN CATEGORY MAPPING ============
+
+const URL_CATEGORY_MAP = [
+  { pattern: /\/diccionario\//i, category: 'Diccionario' },
+  { pattern: /\/blog\//i, category: 'Blog' },
+  { pattern: /\/calculadora/i, category: 'Calculadoras' },
+  { pattern: /\/servicios\//i, category: 'Servicios' },
+  { pattern: /\/autonomos\//i, category: 'Guías' },
+  { pattern: /\/empresas\//i, category: 'Guías' },
+  { pattern: /\/renta\//i, category: 'Guías' },
+  { pattern: /\/guia/i, category: 'Guías' }
+];
+
+/**
+ * Extract main category from URL
+ */
+export const getCategoryFromURL = (url) => {
+  if (!url) return 'Otros';
+
+  for (const { pattern, category } of URL_CATEGORY_MAP) {
+    if (pattern.test(url)) {
+      return category;
+    }
+  }
+
+  return 'Otros';
+};
 
 // ============ DISCARD PATTERNS ============
 
-// Competitors to discard
 const COMPETITORS = [
-  /\banfix\b/i, /\bholded\b/i, /\bquipu\b/i, /\bsage\b/i, /\bcontasol\b/i,
-  /\bfactorial\b/i, /\ba3\b.*software/i, /\bwolters/i, /\bgestoria.*online\b/i,
-  /\btaxdown\b/i, /\bgetquipu\b/i, /\bbillin\b/i, /\bcontaplus\b/i,
-  /\bcontasimple\b/i, /\bdebitoor\b/i, /\bfacturadirecta\b/i, /\bdeclara\b.*facil/i,
-  /\brenta.*web\b/i, /\bdeclarar\b.*\.com/i, /\bgestionar\b.*facil/i
+  /\btaxdown\b/i, /\banfix\b/i, /\bholded\b/i, /\bquipu\b/i, /\bsage\b/i,
+  /\bcontasol\b/i, /\bfactorial\b/i, /\ba3\b.*software/i, /\bwolters/i,
+  /\bgetquipu\b/i, /\bbillin\b/i, /\bcontaplus\b/i, /\bcontasimple\b/i,
+  /\bdebitoor\b/i, /\bfacturadirecta\b/i
 ];
 
-// Typos and malformed keywords
-const TYPO_PATTERNS = [
-  /(.)\1{4,}/, // 5+ repeated characters (more lenient)
-  /[bcdfghjklmnpqrstvwxz]{7,}/i // 7+ consonants in a row
-];
-
-// Generic/irrelevant terms (exact matches only)
-const GENERIC_EXACT = new Set([
-  'telefono', 'contacto', 'email', 'direccion', 'horario', 'oficina',
-  'opiniones', 'reviews', 'login', 'acceso', 'entrar', 'hoy', 'mañana',
-  'ayer', 'siempre', 'nunca', 'todo', 'nada', 'cosa', 'cosas', 'año',
-  'mes', 'dia', 'semana', 'google', 'facebook', 'twitter', 'instagram'
-]);
-
-// Full discard check
 const shouldDiscard = (keyword) => {
   const kw = keyword.toLowerCase().trim();
 
-  // Too short
   if (kw.length <= 2) return { discard: true, reason: 'Muy corto' };
-
-  // Only numbers
   if (/^\d+$/.test(kw)) return { discard: true, reason: 'Solo números' };
 
-  // No letters
-  if (/^[^a-záéíóúüñ]+$/i.test(kw)) return { discard: true, reason: 'Sin letras' };
-
-  // Exact generic match
-  if (GENERIC_EXACT.has(kw)) return { discard: true, reason: 'Término genérico' };
-
-  // Competitors
   for (const pattern of COMPETITORS) {
     if (pattern.test(kw)) return { discard: true, reason: 'Competidor' };
-  }
-
-  // Typos
-  for (const pattern of TYPO_PATTERNS) {
-    if (pattern.test(kw)) return { discard: true, reason: 'Posible typo' };
   }
 
   return { discard: false, reason: '' };
 };
 
-// ============ CATEGORY PATTERNS ============
+// ============ SUBCATEGORY 1 (TOPIC) PATTERNS ============
 
-const CATEGORY_RULES = {
-  'Autónomos': {
-    strong: [ // High confidence patterns
-      /\bautónom[oa]s?\b/i, /\bautonomo[s]?\b/i, /\bfreelance[rs]?\b/i,
-      /\breta\b/i, /cuota.*autónom/i, /autónom.*cuota/i,
-      /tarifa.*plana.*autónom/i, /alta.*autónom/i, /baja.*autónom/i,
-      /cotizaci[oó]n.*autónom/i, /seguridad.*social.*autónom/i,
-      /pluriactividad/i, /capitaliza.*desempleo/i, /mutua.*autónom/i,
-      /trabajador.*cuenta.*propia/i, /por.*cuenta.*propia/i,
-      /aut[oó]nomo.*societario/i, /falso.*aut[oó]nomo/i
-    ],
-    medium: [ // Medium confidence
-      /ep[ií]grafe/i, /iae\b/i, /actividad.*econ[oó]mica/i,
-      /m[oó]dulos/i, /estimaci[oó]n.*directa/i, /estimaci[oó]n.*objetiva/i,
-      /rendimiento.*actividad/i, /gastos.*deducibles.*actividad/i
-    ],
-    keywords: ['autónomo', 'autonomo', 'freelance', 'reta', 'cuota', 'tarifa plana']
-  },
-
-  'Renta': {
-    strong: [
-      /declaraci[oó]n.*renta/i, /renta\s+\d{4}/i, /campa[ñn]a.*renta/i,
-      /\birpf\b/i, /borrador.*renta/i, /renta.*borrador/i,
-      /casilla.*\d+/i, /modelo.*100\b/i, /devoluci[oó]n.*renta/i,
-      /renta.*devoluci[oó]n/i, /hacienda.*renta/i, /renta.*hacienda/i,
-      /declarar.*renta/i, /hacer.*renta/i, /presentar.*renta/i
-    ],
-    medium: [
-      /\brenta\b/i, /deducci[oó]n/i, /desgravar/i, /base.*imponible/i,
-      /tipo.*marginal/i, /tramo.*irpf/i, /m[ií]nimo.*personal/i,
-      /rendimiento.*trabajo/i, /rendimiento.*capital/i,
-      /declaraci[oó]n.*conjunta/i, /declaraci[oó]n.*individual/i,
-      /complementaria/i, /rectificativa/i, /paralela/i
-    ],
-    keywords: ['renta', 'irpf', 'declaración', 'hacienda', 'borrador', 'casilla']
-  },
-
-  'Empresas': {
-    strong: [
-      /sociedad.*limitada/i, /\bs\.?l\.?\b/i, /\bs\.?a\.?\b/i,
-      /impuesto.*sociedades/i, /constituir.*empresa/i, /crear.*empresa/i,
-      /montar.*empresa/i, /abrir.*empresa/i, /registro.*mercantil/i,
-      /capital.*social/i, /junta.*socios/i, /estatutos.*sociedad/i,
-      /administrador.*[uú]nico/i, /consejo.*administraci[oó]n/i
-    ],
-    medium: [
-      /\bempresa[s]?\b/i, /\bsociedad\b/i, /\bpyme[s]?\b/i,
-      /contabilidad.*empresa/i, /balance/i, /cuenta.*resultado/i,
-      /\bcorporativ/i, /iva.*empresa/i, /n[oó]mina.*empresa/i
-    ],
-    keywords: ['empresa', 'sociedad', 'sl', 'sa', 'pyme', 'mercantil']
-  },
-
-  'Trámites': {
-    strong: [
-      /modelo.*\d{3}/i, /\baeat\b/i, /agencia.*tributaria/i,
-      /\bnie\b/i, /\bnif\b/i, /\bcif\b/i, /alta.*censo/i, /baja.*censo/i,
-      /certificado.*digital/i, /certificado.*hacienda/i,
-      /presentar.*modelo/i, /rellenar.*modelo/i
-    ],
-    medium: [
-      /tr[aá]mite/i, /certificado/i, /documento/i, /solicitud/i,
-      /formulario/i, /\bmodelo\b/i, /instancia/i, /registro/i
-    ],
-    keywords: ['modelo', 'certificado', 'aeat', 'trámite', 'nie', 'nif']
-  },
-
-  'Facturación': {
-    strong: [
-      /factura.*electr[oó]nica/i, /factura.*simplificada/i,
-      /factura.*rectificativa/i, /emitir.*factura/i, /hacer.*factura/i,
-      /programa.*factura/i, /software.*factura/i, /plantilla.*factura/i,
-      /n[uú]mero.*factura/i, /serie.*factura/i
-    ],
-    medium: [
-      /\bfactura[s]?\b/i, /facturaci[oó]n/i, /\bticket\b/i,
-      /\brecibo[s]?\b/i, /\balbar[aá]n/i, /\bpresupuesto[s]?\b/i,
-      /cobrar/i, /pagar/i
-    ],
-    keywords: ['factura', 'facturación', 'recibo', 'albarán', 'presupuesto']
-  },
-
-  'Inversiones': {
-    strong: [
-      /declarar.*cripto/i, /impuesto.*cripto/i, /cripto.*impuesto/i,
-      /\bbitcoin\b/i, /\bethereum\b/i, /criptomoneda[s]?/i,
-      /ganancia.*patrimonial/i, /p[eé]rdida.*patrimonial/i,
-      /plusval[ií]a/i, /minusval[ií]a/i, /venta.*acciones/i,
-      /dividendo.*declarar/i, /declarar.*dividendo/i
-    ],
-    medium: [
-      /\binversi[oó]n/i, /\btrading\b/i, /\bcripto\b/i,
-      /\bacci[oó]n/i, /\bacciones\b/i, /\bbolsa\b/i, /\bdividendo/i,
-      /\bbroker\b/i, /\betf\b/i, /\bfondo[s]?\b/i, /\bcartera\b/i,
-      /rentabilidad/i, /\bnft\b/i, /\btoken\b/i, /\bwallet\b/i
-    ],
-    keywords: ['inversión', 'cripto', 'bitcoin', 'acciones', 'bolsa', 'dividendo']
-  },
-
-  'IVA': {
-    strong: [
-      /\biva\b.*\d+/i, /tipo.*iva/i, /iva.*tipo/i, /exento.*iva/i,
-      /iva.*exento/i, /modelo.*303/i, /modelo.*390/i,
-      /declaraci[oó]n.*iva/i, /iva.*trimestral/i, /iva.*anual/i,
-      /repercutir.*iva/i, /soportado.*iva/i, /deducir.*iva/i
-    ],
-    medium: [
-      /\biva\b/i, /impuesto.*valor/i, /base.*imponible.*iva/i
-    ],
-    keywords: ['iva', 'impuesto', 'repercutido', 'soportado']
-  },
-
-  'Nóminas': {
-    strong: [
-      /n[oó]mina.*empleado/i, /calcular.*n[oó]mina/i, /hacer.*n[oó]mina/i,
-      /retenci[oó]n.*n[oó]mina/i, /irpf.*n[oó]mina/i, /n[oó]mina.*irpf/i,
-      /seguridad.*social.*empleado/i, /contrato.*trabajo/i
-    ],
-    medium: [
-      /\bn[oó]mina[s]?\b/i, /\bsalario\b/i, /\bsueldo\b/i,
-      /paga.*extra/i, /finiquito/i, /despido/i, /indemnizaci[oó]n/i
-    ],
-    keywords: ['nómina', 'salario', 'sueldo', 'contrato', 'empleado']
-  },
-
-  'Herencias': {
-    strong: [
-      /impuesto.*sucesiones/i, /impuesto.*herencia/i, /heredar.*impuesto/i,
-      /declarar.*herencia/i, /aceptar.*herencia/i, /renunciar.*herencia/i,
-      /donaci[oó]n.*impuesto/i, /impuesto.*donaci[oó]n/i
-    ],
-    medium: [
-      /\bherencia[s]?\b/i, /\bheredar\b/i, /\bheredero[s]?\b/i,
-      /\bdonaci[oó]n/i, /\bdonar\b/i, /\btestamento\b/i,
-      /sucesi[oó]n/i, /legado/i
-    ],
-    keywords: ['herencia', 'heredar', 'donación', 'sucesiones', 'testamento']
-  },
-
-  'Alquiler': {
-    strong: [
-      /declarar.*alquiler/i, /alquiler.*declarar/i, /alquiler.*renta/i,
-      /renta.*alquiler/i, /ingreso.*alquiler/i, /alquiler.*ingreso/i,
-      /arrendador/i, /arrendatario/i, /contrato.*alquiler/i,
-      /fianza.*alquiler/i, /iva.*alquiler/i, /alquiler.*iva/i
-    ],
-    medium: [
-      /\balquiler\b/i, /\barrendamiento\b/i, /\binquilino\b/i,
-      /\bpiso\b.*alquil/i, /alquil.*\bpiso\b/i, /\brenta\b.*piso/i
-    ],
-    keywords: ['alquiler', 'arrendamiento', 'inquilino', 'arrendador']
-  }
+const SUBCATEGORY1_RULES = {
+  'Autónomos': [
+    /\bautónom[oa]s?\b/i, /\bautonomo[s]?\b/i, /\bfreelance/i,
+    /\breta\b/i, /cuota.*autónom/i, /tarifa.*plana/i,
+    /pluriactividad/i, /aut[oó]nomo.*societario/i
+  ],
+  'Renta': [
+    /declaraci[oó]n.*renta/i, /renta\s+\d{4}/i, /\birpf\b/i,
+    /borrador/i, /casilla/i, /devoluci[oó]n.*renta/i,
+    /declarar.*renta/i, /hacer.*renta/i
+  ],
+  'Empresas': [
+    /sociedad.*limitada/i, /\bs\.?l\.?\b/i, /\bs\.?a\.?\b/i,
+    /impuesto.*sociedades/i, /crear.*empresa/i, /montar.*empresa/i,
+    /registro.*mercantil/i, /\bempresa[s]?\b/i, /\bpyme/i
+  ],
+  'Trámites': [
+    /modelo.*\d{3}/i, /\baeat\b/i, /agencia.*tributaria/i,
+    /\bnie\b/i, /\bnif\b/i, /\bcif\b/i, /certificado/i,
+    /tr[aá]mite/i, /\bmodelo\b/i
+  ],
+  'Facturación': [
+    /factura/i, /facturaci[oó]n/i, /emitir.*factura/i,
+    /\brecibo/i, /\balbar[aá]n/i
+  ],
+  'Inversiones': [
+    /cripto/i, /bitcoin/i, /ethereum/i, /inversi[oó]n/i,
+    /acciones/i, /bolsa/i, /dividendo/i, /plusval[ií]a/i
+  ],
+  'TaxScouts': [
+    /taxscouts/i, /tax\s*scouts/i
+  ]
 };
 
-// Subcategories with patterns
-const SUBCATEGORY_RULES = {
+// ============ SUBCATEGORY 2 (SPECIFIC) PATTERNS ============
+
+const SUBCATEGORY2_RULES = {
   'Autónomos': {
-    'Alta y Registro': /alta|registro|darse.*alta|empezar|comenzar|iniciar.*actividad|nuevo.*aut[oó]nomo/i,
-    'Cuotas y Cotización': /cuota|cotiza|reta|pagar|mensual|seguridad.*social/i,
-    'Tarifa Plana': /tarifa.*plana|bonifica|reducci[oó]n.*cuota/i,
-    'Impuestos Trimestrales': /trimestral|modelo.*130|modelo.*303|pago.*fraccionado/i,
-    'Gastos Deducibles': /gasto|deducible|deducci[oó]n|desgravar|desgrava/i,
-    'Baja': /baja|cese|cerrar|dejar.*actividad|abandonar/i,
-    'Epígrafes IAE': /ep[ií]grafe|iae|actividad.*econ[oó]mica|c[oó]digo.*actividad/i,
-    'Autónomo Societario': /societario|socio.*aut[oó]nomo|aut[oó]nomo.*socio/i,
-    'Pluriactividad': /pluriactividad|trabajar.*empresa.*aut[oó]nomo|compatib/i
+    'Ayudas y Beneficios': /ayuda|beneficio|subvenci[oó]n|bonificaci[oó]n|capitaliza/i,
+    'Declaraciones de Impuestos': /declaraci[oó]n|impuesto|trimestral|modelo.*\d/i,
+    'Epígrafes IAE': /ep[ií]grafe|iae|actividad.*econ[oó]mica/i,
+    'Ingresos y Gastos Deducibles': /ingreso|gasto|deducible|deducci[oó]n/i,
+    'Nuevos Autónomos': /nuevo|alta|empezar|comenzar|iniciar|primer/i,
+    'Profesiones': /profesi[oó]n|abogado|m[eé]dico|arquitecto|ingeniero/i,
+    'Trámites y Documentos': /tr[aá]mite|documento|formulario|solicitud/i
   },
   'Renta': {
-    'Cómo Declarar': /c[oó]mo|hacer|presentar|declarar|paso|tutorial|gu[ií]a/i,
-    'Deducciones': /deducci[oó]n|deducir|desgravar|reducir|reducci[oó]n/i,
-    'Plazos y Fechas': /plazo|fecha|cu[aá]ndo|calendario|l[ií]mite|[uú]ltimo.*d[ií]a/i,
-    'Borrador': /borrador|confirmar|modificar.*borrador|errores.*borrador/i,
-    'Casillas': /casilla|\d{3}|rellenar|campo/i,
-    'Alquiler Vivienda': /alquiler|vivienda|piso|arrendamiento|inquilino/i,
-    'Hipoteca': /hipoteca|vivienda.*habitual|pr[eé]stamo.*vivienda/i,
-    'Familia': /familia|hijo|maternidad|paternidad|discapacidad|dependiente/i,
-    'Devolución': /devoluci[oó]n|devolver|cobrar|resultado.*renta|a.*devolver/i,
-    'Rectificación': /rectific|complementaria|error|corregir|modificar.*declaraci/i
+    '(General / Landing Principal)': /^declaraci[oó]n.*renta$|^renta\s*\d{4}$/i,
+    'Casos Excepcionales': /excepcional|especial|extranjero|herencia|premio/i,
+    'Casos Frecuentes': /frecuente|com[uú]n|normal|b[aá]sico/i,
+    'Deducciones': /deducci[oó]n|deducir|desgravar/i,
+    'Trámites y Plazos': /plazo|fecha|calendario|presentar|l[ií]mite/i
   },
   'Empresas': {
-    'Crear Empresa': /crear|constituir|montar|abrir|fundar|nueva.*empresa/i,
-    'Impuesto Sociedades': /impuesto.*sociedad|is\b|modelo.*200|beneficio.*empresa/i,
-    'Contabilidad': /contabilidad|balance|cuenta.*resultado|asiento|libro.*contable/i,
-    'IVA Empresas': /iva|repercutir|soportado|liquidaci[oó]n.*iva/i,
-    'Socios y Dividendos': /socio|dividendo|reparto|participaci[oó]n|junta/i,
-    'Trámites': /tr[aá]mite|registro|mercantil|escritura|notario/i
-  },
-  'Inversiones': {
-    'Criptomonedas': /cripto|bitcoin|ethereum|token|blockchain|wallet|exchange|binance|coinbase/i,
-    'Acciones y Bolsa': /acci[oó]n|bolsa|broker|comprar.*vender|orden|mercado.*valores/i,
-    'Fondos de Inversión': /fondo|etf|indexado|gesti[oó]n.*pasiva|cartera/i,
-    'Dividendos': /dividendo|reparto|cobrar.*dividendo/i,
-    'Plusvalías': /plusval[ií]a|ganancia|beneficio.*venta|p[eé]rdida.*patrimonial/i
+    '(General / Landing Principal)': /^crear.*empresa$|^montar.*empresa$/i,
+    'Crear una Sociedad Limitada': /crear|constituir|montar|sl\b|sociedad.*limitada/i,
+    'Impuestos': /impuesto|tributo|fiscal|sociedades/i,
+    'Socios': /socio|participaci[oó]n|dividendo|junta/i,
+    'Trámites y Documentos Empresas': /tr[aá]mite|documento|registro|mercantil/i
   },
   'Trámites': {
-    'Modelos Tributarios': /modelo.*\d{3}|presentar.*modelo|rellenar/i,
-    'Certificados': /certificado|solicitar.*certificado|obtener.*certificado/i,
-    'NIE/NIF': /nie|nif|n[uú]mero.*identificaci[oó]n|extranjero/i,
-    'AEAT': /aeat|agencia.*tributaria|sede.*electr[oó]nica|clave.*pin/i
-  }
-};
-
-// Intent patterns - more comprehensive
-const INTENT_ANALYSIS = {
-  transactional: {
-    patterns: [
-      /contratar/i, /solicitar/i, /descargar/i, /comprar/i,
-      /\bapp\b/i, /aplicaci[oó]n/i, /programa/i, /software/i, /herramienta/i,
-      /gestor[ií]a/i, /asesor/i, /servicio/i, /ayuda.*profesional/i,
-      /precio/i, /coste/i, /cu[aá]nto.*cuesta/i, /gratis/i, /barato/i,
-      /mejor/i, /comparar/i, /comparativa/i, /alternativa/i, /opci[oó]n/i,
-      /\bonline\b/i, /f[aá]cil/i, /r[aá]pido/i, /autom[aá]tico/i
-    ],
-    weight: 2
-  },
-  navigational: {
-    patterns: [
-      /sede.*electr[oó]nica/i, /p[aá]gina.*oficial/i, /web.*oficial/i,
-      /entrar/i, /acceder/i, /iniciar.*sesi[oó]n/i, /\blogin\b/i,
-      /descargar.*borrador/i, /ver.*borrador/i
-    ],
-    weight: 1.5
-  },
-  informational: {
-    patterns: [
-      /qu[eé].*es/i, /c[oó]mo/i, /cu[aá]ndo/i, /d[oó]nde/i, /por.*qu[eé]/i,
-      /qu[eé].*significa/i, /diferencia/i, /tipos.*de/i, /clases.*de/i,
-      /requisitos/i, /gu[ií]a/i, /tutorial/i, /explicar/i, /ejemplo/i,
-      /significa/i, /definici[oó]n/i, /concepto/i
-    ],
-    weight: 1
+    '(General)': /tr[aá]mite|certificado|documento/i,
+    'Modelos': /modelo.*\d{3}|formulario/i,
+    'Otros Trámites': /nie|nif|cif|solicitud/i
   }
 };
 
 /**
- * Find best matching category
+ * Find subcategory 1 (topic) from keyword
  */
-const findCategory = (keyword) => {
+const findSubcategory1 = (keyword) => {
   const kw = keyword.toLowerCase();
-  let bestMatch = { category: 'Otros', score: 0, confidence: 'low' };
 
-  for (const [category, rules] of Object.entries(CATEGORY_RULES)) {
-    // Check strong patterns first (high confidence)
-    for (const pattern of rules.strong) {
+  for (const [category, patterns] of Object.entries(SUBCATEGORY1_RULES)) {
+    for (const pattern of patterns) {
       if (pattern.test(kw)) {
-        const score = 100 + pattern.source.length;
-        if (score > bestMatch.score) {
-          bestMatch = { category, score, confidence: 'high' };
-        }
-      }
-    }
-
-    // Check medium patterns
-    for (const pattern of rules.medium) {
-      if (pattern.test(kw)) {
-        const score = 50 + pattern.source.length;
-        if (score > bestMatch.score) {
-          bestMatch = { category, score, confidence: 'medium' };
-        }
-      }
-    }
-
-    // Check keyword presence
-    for (const word of rules.keywords) {
-      if (kw.includes(word)) {
-        const score = 30 + word.length;
-        if (score > bestMatch.score) {
-          bestMatch = { category, score, confidence: 'low' };
-        }
+        return category;
       }
     }
   }
 
-  return bestMatch;
+  return null;
 };
 
 /**
- * Find subcategory
+ * Find subcategory 2 from keyword
  */
-const findSubCategory = (keyword, mainCategory) => {
+const findSubcategory2 = (keyword, subcat1) => {
+  if (!subcat1 || !SUBCATEGORY2_RULES[subcat1]) return '';
+
   const kw = keyword.toLowerCase();
-  const rules = SUBCATEGORY_RULES[mainCategory];
+  const rules = SUBCATEGORY2_RULES[subcat1];
 
-  if (!rules) return '';
-
-  for (const [subCategory, pattern] of Object.entries(rules)) {
+  for (const [subcat, pattern] of Object.entries(rules)) {
     if (pattern.test(kw)) {
-      return subCategory;
+      return subcat;
     }
   }
 
@@ -354,156 +159,131 @@ const findSubCategory = (keyword, mainCategory) => {
 };
 
 /**
- * Determine intent with confidence
+ * Determine intent
  */
 const determineIntent = (keyword) => {
   const kw = keyword.toLowerCase();
-  let scores = { transactional: 0, navigational: 0, informational: 0 };
 
-  for (const [intent, config] of Object.entries(INTENT_ANALYSIS)) {
-    for (const pattern of config.patterns) {
-      if (pattern.test(kw)) {
-        scores[intent] += config.weight;
-      }
-    }
+  const transactional = [
+    /contratar/i, /solicitar/i, /comprar/i, /precio/i,
+    /programa/i, /software/i, /\bonline\b/i, /mejor/i
+  ];
+
+  for (const pattern of transactional) {
+    if (pattern.test(kw)) return 'Transactional';
   }
 
-  // Default bias toward informational
-  scores.informational += 0.5;
-
-  const maxIntent = Object.entries(scores).reduce((a, b) => a[1] > b[1] ? a : b);
-
-  return maxIntent[0] === 'transactional' ? 'Transactional' : 'Informational';
+  return 'Informational';
 };
 
 /**
- * Extract semantic topics from keyword for URL matching
+ * Extract topics for semantic matching
  */
 export const extractTopics = (keyword) => {
   const kw = keyword.toLowerCase();
   const topics = [];
 
-  // Main topic indicators
-  const topicPatterns = {
-    'autonomos': /aut[oó]nomo|freelance|cuenta.*propia|reta\b/i,
-    'renta': /renta|irpf|declaraci[oó]n|hacienda/i,
-    'empresas': /empresa|sociedad|pyme|sl\b|sa\b|mercantil/i,
-    'iva': /\biva\b|impuesto.*valor/i,
-    'facturacion': /factura|facturaci[oó]n/i,
-    'nominas': /n[oó]mina|salario|sueldo/i,
-    'inversiones': /inversi[oó]n|cripto|bitcoin|acciones|bolsa/i,
-    'herencias': /herencia|donaci[oó]n|sucesi[oó]n/i,
-    'alquiler': /alquiler|arrendamiento|inquilino/i,
-    'tramites': /tr[aá]mite|modelo|certificado|aeat/i
+  const patterns = {
+    'autonomos': /aut[oó]nomo|freelance|reta\b/i,
+    'renta': /renta|irpf|declaraci[oó]n/i,
+    'empresas': /empresa|sociedad|pyme/i,
+    'facturacion': /factura/i,
+    'inversiones': /inversi[oó]n|cripto|bitcoin|acciones/i,
+    'tramites': /tr[aá]mite|modelo|certificado/i
   };
 
-  for (const [topic, pattern] of Object.entries(topicPatterns)) {
-    if (pattern.test(kw)) {
-      topics.push(topic);
-    }
-  }
-
-  // Action indicators
-  const actionPatterns = {
-    'como-hacer': /c[oó]mo|hacer|presentar|calcular|rellenar/i,
-    'que-es': /qu[eé].*es|significa|definici[oó]n/i,
-    'requisitos': /requisito|necesario|obligatorio/i,
-    'plazos': /plazo|fecha|cu[aá]ndo|calendario/i,
-    'deducciones': /deducci[oó]n|desgravar|deducir/i,
-    'alta-baja': /alta|baja|registro|cese/i
-  };
-
-  for (const [action, pattern] of Object.entries(actionPatterns)) {
-    if (pattern.test(kw)) {
-      topics.push(action);
-    }
+  for (const [topic, pattern] of Object.entries(patterns)) {
+    if (pattern.test(kw)) topics.push(topic);
   }
 
   return topics;
 };
 
 /**
- * Classify a single keyword
+ * Classify a single keyword (without URL context)
  */
 const classifyKeyword = (keyword, historicalData = []) => {
   const kw = keyword.toLowerCase().trim();
 
-  // Check if should be discarded
   const discardCheck = shouldDiscard(kw);
   if (discardCheck.discard) {
     return {
       keyword,
-      mainCategory: 'Otros',
-      subCategory: '',
+      subCategory1: null,
+      subCategory2: '',
       intent: 'Informational',
       shouldDiscard: true,
       discardReason: discardCheck.reason,
-      confidence: 'high',
       topics: []
     };
   }
 
-  // Extract semantic topics
-  const topics = extractTopics(kw);
-
-  // Check historical data for exact match
-  if (historicalData.length > 0) {
-    const exactMatch = historicalData.find(h =>
-      h.keyword.toLowerCase().trim() === kw
-    );
-    if (exactMatch) {
-      return {
-        keyword,
-        mainCategory: exactMatch.mainCategory,
-        subCategory: exactMatch.subCategory || findSubCategory(kw, exactMatch.mainCategory),
-        intent: determineIntent(kw),
-        shouldDiscard: false,
-        discardReason: '',
-        confidence: 'high',
-        topics
-      };
-    }
-
-    // Check for similar matches
-    for (const hist of historicalData) {
-      const histWords = hist.keyword.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-      const kwWords = kw.split(/\s+/).filter(w => w.length > 3);
-      const commonWords = histWords.filter(w => kwWords.includes(w));
-
-      if (commonWords.length >= 2 || (commonWords.length === 1 && histWords.length === 1 && kwWords.length <= 3)) {
-        return {
-          keyword,
-          mainCategory: hist.mainCategory,
-          subCategory: hist.subCategory || findSubCategory(kw, hist.mainCategory),
-          intent: determineIntent(kw),
-          shouldDiscard: false,
-          discardReason: '',
-          confidence: 'medium',
-          topics
-        };
-      }
-    }
-  }
-
-  // Pattern-based classification
-  const categoryMatch = findCategory(kw);
-  const subCategory = findSubCategory(kw, categoryMatch.category);
+  const subCategory1 = findSubcategory1(kw);
+  const subCategory2 = findSubcategory2(kw, subCategory1);
   const intent = determineIntent(kw);
+  const topics = extractTopics(kw);
 
   return {
     keyword,
-    mainCategory: categoryMatch.category,
-    subCategory,
+    subCategory1,
+    subCategory2,
     intent,
     shouldDiscard: false,
     discardReason: '',
-    confidence: categoryMatch.confidence,
     topics
   };
 };
 
 /**
- * Classify keywords in batches
+ * Determine the best subcategories for a URL group
+ * All keywords in a URL should share the same classification
+ */
+export const classifyURLGroup = (url, keywords, historicalData = []) => {
+  // Main category from URL
+  const mainCategory = getCategoryFromURL(url);
+
+  // Count subcategory votes from all keywords
+  const subcat1Votes = {};
+  const subcat2Votes = {};
+  const intents = { Informational: 0, Transactional: 0 };
+
+  const keywordResults = [];
+
+  for (const kw of keywords) {
+    const result = classifyKeyword(kw.keyword || kw, historicalData);
+    keywordResults.push(result);
+
+    if (!result.shouldDiscard) {
+      if (result.subCategory1) {
+        subcat1Votes[result.subCategory1] = (subcat1Votes[result.subCategory1] || 0) + 1;
+      }
+      if (result.subCategory2) {
+        subcat2Votes[result.subCategory2] = (subcat2Votes[result.subCategory2] || 0) + 1;
+      }
+      intents[result.intent]++;
+    }
+  }
+
+  // Get winning subcategories
+  const subCategory1 = Object.entries(subcat1Votes)
+    .sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+
+  const subCategory2 = Object.entries(subcat2Votes)
+    .sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+
+  const intent = intents.Transactional > intents.Informational ? 'Transactional' : 'Informational';
+
+  return {
+    mainCategory,
+    subCategory1,
+    subCategory2,
+    intent,
+    keywordResults
+  };
+};
+
+/**
+ * Classify keywords in batches (legacy support)
  */
 export const classifyKeywordsLocally = async (keywords, historicalData = [], onProgress) => {
   const results = [];
@@ -514,7 +294,17 @@ export const classifyKeywordsLocally = async (keywords, historicalData = [], onP
 
     for (const keyword of batch) {
       if (keyword && keyword.trim()) {
-        results.push(classifyKeyword(keyword, historicalData));
+        const result = classifyKeyword(keyword, historicalData);
+        results.push({
+          keyword,
+          mainCategory: result.subCategory1 || 'Otros',
+          subCategory: result.subCategory2 || '',
+          intent: result.intent,
+          shouldDiscard: result.shouldDiscard,
+          discardReason: result.discardReason,
+          confidence: result.subCategory1 ? 'high' : 'low',
+          topics: result.topics
+        });
       }
     }
 
@@ -522,8 +312,7 @@ export const classifyKeywordsLocally = async (keywords, historicalData = [], onP
       onProgress(Math.min(i + batchSize, keywords.length), keywords.length);
     }
 
-    // Small delay to show progress
-    await new Promise(r => setTimeout(r, 20));
+    await new Promise(r => setTimeout(r, 10));
   }
 
   return results;

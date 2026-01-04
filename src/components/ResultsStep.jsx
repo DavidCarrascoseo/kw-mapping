@@ -276,10 +276,23 @@ const ResultsStep = ({
                         <span className="text-xs font-medium bg-white/20 px-2 py-0.5 rounded">
                           #{urlIndex + 1}
                         </span>
+                        {/* Show URL classification */}
+                        {group.keywords[0] && (
+                          <>
+                            <span className="text-xs bg-white/30 px-2 py-0.5 rounded font-semibold">
+                              {group.keywords[0]['Main Category']}
+                            </span>
+                            {group.keywords[0]['Sub Category 1'] && (
+                              <span className="text-xs bg-white/20 px-2 py-0.5 rounded">
+                                {group.keywords[0]['Sub Category 1']}
+                              </span>
+                            )}
+                          </>
+                        )}
                         {group.expansionCount > 0 && (
                           <span className="text-xs bg-amber-400/30 px-2 py-0.5 rounded flex items-center gap-1">
                             <Sparkles size={12} />
-                            {group.expansionCount} expansiones
+                            +{group.expansionCount}
                           </span>
                         )}
                       </div>

@@ -6,12 +6,12 @@ import ProcessingStep from './ProcessingStep';
 import ResultsStep from './ResultsStep';
 import { parseCSV, downloadCSV } from '../utils/csv';
 import { classifyKeywords } from '../services/classifier';
-import { classifyKeywordsLocally } from '../services/localClassifier';
+import { classifyKeywordsLocally, classifyURLGroup } from '../services/localClassifier';
 import { getSistrixData, getSearchVolume } from '../services/sistrix';
 import { analyzeForExpansion, calculateSemanticSimilarity } from '../services/semanticExpansion';
 
 const EXPORT_HEADERS = [
-  'Target-URL', 'Keyword', 'SV', 'Main Category', 'Sub Category 1',
+  'Target-URL', 'Keyword', 'SV', 'Main Category', 'Sub Category 1', 'Sub Category 2',
   'KW Intent', 'Confidence', 'Source', 'Is Expansion'
 ];
 
@@ -140,54 +140,35 @@ const SEOAutomator = () => {
         }
 
         setUrlOrder(urlOrderList);
-        setTotalCount(rows.length);
+        setTotalCount(urlOrderList.length);
 
-        // Step 2: Classify all keywords
+        // Step 2: Classify each URL group
+        // All keywords in a URL get the same category (from URL) and subcategories (voted from keywords)
         setCurrentPhase('classifying');
-        const allKeywords = rows.map(row => row[columnMapping.keyword] || '').filter(k => k);
-
-        let classifications;
-        if (config.useAI && config.anthropicApiKey) {
-          classifications = await classifyKeywords(
-            allKeywords,
-            config.anthropicApiKey,
-            historicalData,
-            (current) => setProcessedCount(current)
-          );
-        } else {
-          classifications = await classifyKeywordsLocally(
-            allKeywords,
-            historicalData,
-            (current) => setProcessedCount(current)
-          );
-        }
-
-        // Build classification map
-        const classificationMap = new Map();
-        allKeywords.forEach((kw, idx) => {
-          classificationMap.set(kw.toLowerCase().trim(), classifications[idx]);
-        });
-
-        // Step 3: Process each URL group
-        setCurrentPhase('processing');
         const results = [];
         const discarded = [];
         let processedIdx = 0;
+        let urlIdx = 0;
 
         for (const url of urlOrderList) {
           const urlKeywords = urlGroups.get(url);
 
-          for (const kwData of urlKeywords) {
-            const classification = classificationMap.get(kwData.keyword.toLowerCase().trim()) || {};
+          // Classify the entire URL group - all keywords share the same classification
+          const groupClassification = classifyURLGroup(url, urlKeywords, historicalData);
 
-            // Check if should be discarded
-            if (classification.shouldDiscard) {
+          for (const kwData of urlKeywords) {
+            // Check if individual keyword should be discarded
+            const kwResult = groupClassification.keywordResults.find(
+              r => (r.keyword || '').toLowerCase() === kwData.keyword.toLowerCase()
+            );
+
+            if (kwResult?.shouldDiscard) {
               discarded.push({
                 id: processedIdx,
                 keyword: kwData.keyword,
                 volume: kwData.volume,
                 url,
-                reason: classification.discardReason || 'Descartada'
+                reason: kwResult.discardReason || 'Descartada'
               });
               processedIdx++;
               continue;
@@ -208,29 +189,29 @@ const SEOAutomator = () => {
                 finalVolume = sistrixVolume;
                 sistrixEnriched = true;
               }
-              // Rate limiting
               await new Promise(r => setTimeout(r, 150));
             }
 
+            // All keywords in URL share the same Main Category and Sub Categories
             results.push({
               id: processedIdx,
               'Target-URL': url,
               'Keyword': kwData.keyword,
               'SV': finalVolume,
-              'Main Category': classification.mainCategory || 'Otros',
-              'Sub Category 1': classification.subCategory || '',
-              'KW Intent': classification.intent || 'Informational',
-              '_confidence': classification.confidence || 'low',
+              'Main Category': groupClassification.mainCategory,
+              'Sub Category 1': groupClassification.subCategory1 || '',
+              'Sub Category 2': groupClassification.subCategory2 || '',
+              'KW Intent': groupClassification.intent,
+              '_confidence': groupClassification.subCategory1 ? 'high' : 'medium',
               '_isExpansion': false,
               '_sistrixEnriched': sistrixEnriched,
-              '_urlOrder': urlOrderList.indexOf(url)
+              '_urlOrder': urlIdx
             });
 
             processedIdx++;
-            setProcessedCount(processedIdx);
           }
 
-          // Step 4: Find related keywords for high-volume terms (>20 searches)
+          // Step 3: Find related keywords for high-volume terms (>20 searches)
           if (config.useSistrix && config.sistrixApiKey) {
             setCurrentPhase('expanding');
             const expansions = await analyzeForExpansion(
@@ -241,36 +222,35 @@ const SEOAutomator = () => {
 
             for (const exp of expansions) {
               for (const related of exp.expansions) {
-                // Check if this keyword isn't already in results
                 const exists = results.some(r =>
                   r['Keyword'].toLowerCase() === related.keyword.toLowerCase() ||
                   calculateSemanticSimilarity(r['Keyword'], related.keyword) > 0.85
                 );
 
                 if (!exists) {
-                  // Classify the new keyword
-                  const newClassification = classificationMap.get(related.keyword.toLowerCase()) ||
-                    (await classifyKeywordsLocally([related.keyword], historicalData))[0] ||
-                    {};
-
+                  // Expansion keywords inherit the URL's classification
                   results.push({
                     id: processedIdx++,
                     'Target-URL': url,
                     'Keyword': related.keyword,
                     'SV': related.searchVolume || 0,
-                    'Main Category': newClassification.mainCategory || 'Otros',
-                    'Sub Category 1': newClassification.subCategory || '',
-                    'KW Intent': newClassification.intent || 'Informational',
+                    'Main Category': groupClassification.mainCategory,
+                    'Sub Category 1': groupClassification.subCategory1 || '',
+                    'Sub Category 2': groupClassification.subCategory2 || '',
+                    'KW Intent': groupClassification.intent,
                     '_confidence': 'medium',
                     '_isExpansion': true,
                     '_expansionSource': exp.seedKeyword,
                     '_sistrixEnriched': true,
-                    '_urlOrder': urlOrderList.indexOf(url)
+                    '_urlOrder': urlIdx
                   });
                 }
               }
             }
           }
+
+          urlIdx++;
+          setProcessedCount(urlIdx);
         }
 
         // Sort results by URL order
