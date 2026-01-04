@@ -184,6 +184,7 @@ const SEOAutomator = () => {
           const mainCategory = classification?.mainCategory || 'Otros';
           const subCategory = classification?.subCategory || '';
           const intent = classification?.intent || 'Informational';
+          const confidence = classification?.confidence || 'low';
 
           const urlMatch = findBestURL(
             keyword,
@@ -191,7 +192,8 @@ const SEOAutomator = () => {
             inventoryUrls,
             sitemapUrls,
             sistrixData,
-            config.domain
+            config.domain,
+            classification // Pass full classification for better matching
           );
 
           results.push({
@@ -210,7 +212,12 @@ const SEOAutomator = () => {
             'Ranking-URL': sistrixData?.rankingUrl || '',
             _source: urlMatch.source,
             _currentRanking: sistrixData?.currentRanking || null,
-            _sistrixEnriched: !!sistrixData
+            _sistrixEnriched: !!sistrixData,
+            _recommendation: urlMatch.recommendation,
+            _message: urlMatch.message,
+            _alternatives: urlMatch.alternatives || [],
+            _confidence: confidence,
+            _matchScore: urlMatch.score
           });
 
           setProcessedCount(idx + 1);
