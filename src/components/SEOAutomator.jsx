@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { Sparkles, TrendingUp, RotateCcw } from 'lucide-react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { Sparkles, TrendingUp, RotateCcw, Save, FolderOpen } from 'lucide-react';
 import ConfigStep from './ConfigStep';
 import MappingStep from './MappingStep';
 import ProcessingStep from './ProcessingStep';
@@ -15,9 +15,35 @@ const EXPORT_HEADERS = [
   'KW Intent', 'Confidence', 'Source', 'Is Expansion'
 ];
 
+const STORAGE_KEYS = {
+  CONFIG: 'seo-mapper-config',
+  HISTORICAL: 'seo-mapper-historical',
+  LAST_RESULTS: 'seo-mapper-results',
+  LAST_SESSION: 'seo-mapper-session'
+};
+
+// Load from localStorage
+const loadFromStorage = (key, defaultValue) => {
+  try {
+    const saved = localStorage.getItem(key);
+    return saved ? JSON.parse(saved) : defaultValue;
+  } catch {
+    return defaultValue;
+  }
+};
+
+// Save to localStorage
+const saveToStorage = (key, value) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.warn('Error saving to localStorage:', e);
+  }
+};
+
 const SEOAutomator = () => {
-  // Configuration state
-  const [config, setConfig] = useState({
+  // Configuration state - load from localStorage
+  const [config, setConfig] = useState(() => loadFromStorage(STORAGE_KEYS.CONFIG, {
     sitemap: '',
     urlInventory: '',
     domain: '',
@@ -26,12 +52,12 @@ const SEOAutomator = () => {
     sistrixApiKey: '',
     anthropicApiKey: '',
     useAI: false
-  });
+  }));
 
   // File state
   const [keywordsFile, setKeywordsFile] = useState(null);
   const [historicalFile, setHistoricalFile] = useState(null);
-  const [historicalData, setHistoricalData] = useState([]);
+  const [historicalData, setHistoricalData] = useState(() => loadFromStorage(STORAGE_KEYS.HISTORICAL, []));
   const [availableColumns, setAvailableColumns] = useState([]);
   const [previewData, setPreviewData] = useState([]);
   const [columnMapping, setColumnMapping] = useState({ url: '', keyword: '', volume: '' });
@@ -42,6 +68,21 @@ const SEOAutomator = () => {
   const [processedCount, setProcessedCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [currentPhase, setCurrentPhase] = useState('');
+
+  // Session management
+  const [hasSavedSession, setHasSavedSession] = useState(() => !!localStorage.getItem(STORAGE_KEYS.LAST_RESULTS));
+
+  // Auto-save config when it changes
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.CONFIG, config);
+  }, [config]);
+
+  // Auto-save historical data when it changes
+  useEffect(() => {
+    if (historicalData.length > 0) {
+      saveToStorage(STORAGE_KEYS.HISTORICAL, historicalData);
+    }
+  }, [historicalData]);
 
   // Results state
   const [processedData, setProcessedData] = useState([]);
@@ -320,6 +361,57 @@ const SEOAutomator = () => {
     setUrlOrder([]);
   }, []);
 
+  // Save current session
+  const handleSaveSession = useCallback(() => {
+    const session = {
+      processedData,
+      discardedData,
+      urlOrder,
+      timestamp: new Date().toISOString(),
+      config: {
+        domain: config.domain,
+        country: config.country,
+        useSistrix: config.useSistrix
+      }
+    };
+    saveToStorage(STORAGE_KEYS.LAST_RESULTS, session);
+    setHasSavedSession(true);
+    alert('Sesión guardada correctamente');
+  }, [processedData, discardedData, urlOrder, config]);
+
+  // Load saved session
+  const handleLoadSession = useCallback(() => {
+    const session = loadFromStorage(STORAGE_KEYS.LAST_RESULTS, null);
+    if (session) {
+      setProcessedData(session.processedData || []);
+      setDiscardedData(session.discardedData || []);
+      setUrlOrder(session.urlOrder || []);
+      setStep('results');
+    }
+  }, []);
+
+  // Clear saved data
+  const handleClearSaved = useCallback(() => {
+    if (confirm('¿Eliminar todos los datos guardados? (Configuración, histórico y resultados)')) {
+      localStorage.removeItem(STORAGE_KEYS.CONFIG);
+      localStorage.removeItem(STORAGE_KEYS.HISTORICAL);
+      localStorage.removeItem(STORAGE_KEYS.LAST_RESULTS);
+      setHasSavedSession(false);
+      setHistoricalData([]);
+      setConfig({
+        sitemap: '',
+        urlInventory: '',
+        domain: '',
+        country: 'es',
+        useSistrix: false,
+        sistrixApiKey: '',
+        anthropicApiKey: '',
+        useAI: false
+      });
+      alert('Datos eliminados');
+    }
+  }, []);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
@@ -362,16 +454,58 @@ const SEOAutomator = () => {
           </div>
         </header>
 
-        {/* Reset button when in results */}
+        {/* Session buttons */}
+        {step === 'config' && (
+          <div className="mb-4 flex justify-between items-center">
+            <div className="text-sm text-gray-500">
+              {historicalData.length > 0 && (
+                <span className="bg-green-100 text-green-700 px-2 py-1 rounded">
+                  {historicalData.length} registros históricos cargados
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              {hasSavedSession && (
+                <button
+                  onClick={handleLoadSession}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg transition"
+                >
+                  <FolderOpen size={18} />
+                  Cargar última sesión
+                </button>
+              )}
+              <button
+                onClick={handleClearSaved}
+                className="flex items-center gap-2 px-4 py-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition text-sm"
+              >
+                Limpiar datos
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Results toolbar */}
         {step === 'results' && (
-          <div className="mb-4 flex justify-end">
-            <button
-              onClick={handleReset}
-              className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition"
-            >
-              <RotateCcw size={18} />
-              Nuevo análisis
-            </button>
+          <div className="mb-4 flex justify-between items-center">
+            <div className="text-sm text-gray-500">
+              Configuración y datos guardados automáticamente
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleSaveSession}
+                className="flex items-center gap-2 px-4 py-2 bg-green-100 text-green-700 hover:bg-green-200 rounded-lg transition"
+              >
+                <Save size={18} />
+                Guardar sesión
+              </button>
+              <button
+                onClick={handleReset}
+                className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition"
+              >
+                <RotateCcw size={18} />
+                Nuevo análisis
+              </button>
+            </div>
           </div>
         )}
 
