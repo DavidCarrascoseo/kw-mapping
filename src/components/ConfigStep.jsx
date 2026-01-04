@@ -1,5 +1,5 @@
 import React from 'react';
-import { Upload, FileText, TrendingUp, Brain, Cpu } from 'lucide-react';
+import { Upload, FileText, TrendingUp, Brain, Cpu, Link, Database } from 'lucide-react';
 
 const ConfigStep = ({
   config,
@@ -103,7 +103,7 @@ const ConfigStep = ({
               <span className="font-bold text-gray-800">Enriquecer con SISTRIX</span>
             </div>
             <p className="text-sm text-green-700 mt-1">
-              Obtén ranking actual, volumen de búsqueda real y competencia
+              Buscar volumen en SISTRIX cuando no esté en el CSV. También busca keywords relacionadas para términos con +20 búsquedas.
             </p>
           </div>
         </label>
@@ -130,7 +130,7 @@ const ConfigStep = ({
                   value={config.domain}
                   onChange={handleChange('domain')}
                   className="w-full p-2 border-2 rounded-lg"
-                  placeholder="taxfix.es"
+                  placeholder="ejemplo.com"
                 />
               </div>
               <div>
@@ -153,43 +153,43 @@ const ConfigStep = ({
         )}
       </div>
 
-      {/* URLs Section */}
+      {/* Data Sources Section */}
       <div className="space-y-6">
+        <h3 className="font-bold text-gray-800 flex items-center gap-2">
+          <Database size={20} />
+          Fuentes de Datos
+        </h3>
+
+        {/* Sitemap URLs */}
         <div>
           <label className="block text-sm font-semibold mb-2 text-gray-700">
-            Sitemap URLs (una por línea)
+            Sitemap URLs (opcional)
           </label>
+          <p className="text-xs text-gray-500 mb-2">
+            URLs adicionales del sitemap para sugerencias. El mapeo principal viene del CSV.
+          </p>
           <textarea
-            className="w-full h-32 p-3 border-2 rounded-lg font-mono text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition"
+            className="w-full h-24 p-3 border-2 rounded-lg font-mono text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition"
             value={config.sitemap}
             onChange={handleChange('sitemap')}
-            placeholder="https://taxfix.es/pagina-1&#10;https://taxfix.es/pagina-2&#10;..."
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold mb-2 text-gray-700">
-            Inventario de URLs (una por línea)
-          </label>
-          <textarea
-            className="w-full h-40 p-3 border-2 rounded-lg font-mono text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition"
-            value={config.urlInventory}
-            onChange={handleChange('urlInventory')}
-            placeholder="https://taxfix.es/blog/articulo-1&#10;https://taxfix.es/autonomos/guia&#10;..."
+            placeholder="https://ejemplo.com/pagina-1&#10;https://ejemplo.com/pagina-2&#10;..."
           />
         </div>
 
         {/* Historical File */}
-        <div>
-          <label className="block text-sm font-semibold mb-2 text-gray-700">
-            Archivo Histórico (opcional)
+        <div className="p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
+          <label className="block text-sm font-semibold mb-2 text-blue-800">
+            <div className="flex items-center gap-2">
+              <Database size={16} />
+              Archivo Histórico (opcional)
+            </div>
           </label>
-          <p className="text-xs text-gray-500 mb-2">
-            Sube un CSV con clasificaciones anteriores para mejorar la precisión
+          <p className="text-xs text-blue-600 mb-3">
+            CSV con clasificaciones anteriores para mejorar la precisión. Debe tener columnas: Keyword, Main Category
           </p>
-          <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed rounded-lg cursor-pointer hover:bg-gray-50 hover:border-indigo-300 transition">
-            <Upload size={20} className="text-gray-400" />
-            <span className="text-sm text-gray-600">
+          <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-blue-300 rounded-lg cursor-pointer hover:bg-blue-100 hover:border-blue-400 transition bg-white">
+            <Upload size={20} className="text-blue-400" />
+            <span className="text-sm text-blue-600">
               {historicalFile ? historicalFile.name : 'Subir CSV histórico'}
             </span>
             <input
@@ -201,20 +201,27 @@ const ConfigStep = ({
           </label>
           {historicalDataCount > 0 && (
             <p className="text-sm text-green-600 mt-2 font-semibold">
-              ✓ {historicalDataCount} registros cargados - Se usarán para mejorar la clasificación
+              ✓ {historicalDataCount} registros cargados
             </p>
           )}
         </div>
 
-        {/* Keywords File */}
-        <div>
-          <label className="block text-sm font-semibold mb-2 text-gray-700">
-            Keywords CSV <span className="text-red-500">*</span>
+        {/* Keywords File - Main input */}
+        <div className="p-4 bg-purple-50 border-2 border-purple-300 rounded-lg">
+          <label className="block text-sm font-semibold mb-2 text-purple-800">
+            <div className="flex items-center gap-2">
+              <Link size={16} />
+              CSV de Keywords con URLs <span className="text-red-500">*</span>
+            </div>
           </label>
-          <label className="flex items-center justify-center gap-2 p-6 border-2 border-dashed rounded-lg cursor-pointer bg-indigo-50 hover:bg-indigo-100 hover:border-indigo-400 transition">
-            <FileText size={24} className="text-indigo-500" />
-            <span className="text-indigo-700 font-medium">
-              {keywordsFile ? keywordsFile.name : 'Seleccionar archivo CSV'}
+          <p className="text-xs text-purple-600 mb-3">
+            CSV con columnas: <strong>URL</strong>, <strong>Keyword</strong>, <strong>Volumen</strong>.
+            Cada keyword viene ya asociada a su URL de destino.
+          </p>
+          <label className="flex items-center justify-center gap-2 p-6 border-2 border-dashed border-purple-400 rounded-lg cursor-pointer bg-white hover:bg-purple-100 hover:border-purple-500 transition">
+            <FileText size={24} className="text-purple-500" />
+            <span className="text-purple-700 font-medium">
+              {keywordsFile ? keywordsFile.name : 'Seleccionar CSV de Keywords'}
             </span>
             <input
               type="file"

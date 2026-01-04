@@ -1,6 +1,6 @@
 /**
  * SISTRIX API Service
- * Provides keyword ranking and search volume data
+ * Provides keyword ranking, search volume data, and related keywords
  */
 
 const SISTRIX_BASE_URL = 'https://api.sistrix.com';
@@ -52,6 +52,83 @@ export const getSistrixData = async (keyword, apiKey, country, domain) => {
     return null;
   } catch (error) {
     console.warn(`SISTRIX fetch error for "${keyword}":`, error.message);
+    return null;
+  }
+};
+
+/**
+ * Get related keywords from SISTRIX
+ * @param {string} keyword - The seed keyword
+ * @param {string} apiKey - SISTRIX API key
+ * @param {string} country - Country code
+ * @param {number} limit - Max number of related keywords
+ * @returns {Promise<Array|null>}
+ */
+export const getRelatedKeywords = async (keyword, apiKey, country, limit = 10) => {
+  if (!apiKey) return null;
+
+  try {
+    const params = new URLSearchParams({
+      api_key: apiKey,
+      keyword: keyword,
+      country: country,
+      format: 'json',
+      num: limit.toString()
+    });
+
+    const response = await fetch(`${SISTRIX_BASE_URL}/keyword.related?${params}`);
+
+    if (!response.ok) {
+      console.warn(`SISTRIX related API error for "${keyword}": ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+
+    if (data?.answer?.[0]?.keyword) {
+      return data.answer[0].keyword.map(k => ({
+        keyword: k.keyword,
+        searchVolume: k.searchvolume || 0,
+        cpc: k.cpc || 0,
+        competition: k.competition || 0
+      }));
+    }
+
+    return null;
+  } catch (error) {
+    console.warn(`SISTRIX related fetch error for "${keyword}":`, error.message);
+    return null;
+  }
+};
+
+/**
+ * Get keyword search volume only
+ * @param {string} keyword - The keyword
+ * @param {string} apiKey - SISTRIX API key
+ * @param {string} country - Country code
+ * @returns {Promise<number|null>}
+ */
+export const getSearchVolume = async (keyword, apiKey, country) => {
+  if (!apiKey) return null;
+
+  try {
+    const params = new URLSearchParams({
+      api_key: apiKey,
+      keyword: keyword,
+      country: country,
+      format: 'json'
+    });
+
+    const response = await fetch(`${SISTRIX_BASE_URL}/keyword.seo?${params}`);
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json();
+    return data?.answer?.[0]?.searchvolume || null;
+  } catch (error) {
+    console.warn(`SISTRIX volume fetch error for "${keyword}":`, error.message);
     return null;
   }
 };

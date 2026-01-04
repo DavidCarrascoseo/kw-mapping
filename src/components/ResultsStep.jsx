@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Download, Search, Trash2, AlertTriangle, Edit2, Check, X, ChevronDown, ChevronRight, Plus, ExternalLink, AlertCircle, CheckCircle } from 'lucide-react';
+import { Download, Search, Trash2, AlertTriangle, Edit2, Check, X, ChevronDown, ChevronRight, Sparkles, Link2 } from 'lucide-react';
 
 const ResultsStep = ({
   processedData,
@@ -8,80 +8,90 @@ const ResultsStep = ({
   onRemoveKeyword,
   onExport,
   useSistrix,
-  historicalDataCount
+  historicalDataCount,
+  urlOrder = []
 }) => {
   const [filterText, setFilterText] = useState('');
-  const [sortBy, setSortBy] = useState('url');
   const [showDiscarded, setShowDiscarded] = useState(false);
   const [editingCell, setEditingCell] = useState(null);
   const [editValue, setEditValue] = useState('');
   const [expandedUrls, setExpandedUrls] = useState(new Set());
-  const [showAlternatives, setShowAlternatives] = useState(null);
+  const [expandAll, setExpandAll] = useState(false);
 
   // Statistics
   const stats = useMemo(() => {
-    const newPages = processedData.filter(r => r['URL exists'] === 'No').length;
-    const existingPages = processedData.filter(r => r['URL exists'] === 'Yes').length;
-    const needsReview = processedData.filter(r => r._recommendation === 'review').length;
-    const enriched = processedData.filter(r => r._sistrixEnriched).length;
+    const uniqueUrls = new Set(processedData.map(r => r['Target-URL'])).size;
+    const totalKeywords = processedData.length;
+    const totalVolume = processedData.reduce((sum, r) => sum + parseInt(r['SV'] || 0), 0);
+    const expansions = processedData.filter(r => r._isExpansion).length;
     const highConfidence = processedData.filter(r => r._confidence === 'high').length;
+    const categories = {};
+    processedData.forEach(r => {
+      const cat = r['Main Category'] || 'Otros';
+      categories[cat] = (categories[cat] || 0) + 1;
+    });
 
-    return { newPages, existingPages, needsReview, enriched, highConfidence };
+    return { uniqueUrls, totalKeywords, totalVolume, expansions, highConfidence, categories };
   }, [processedData]);
 
-  const sortedData = useMemo(() => {
-    let data = [...processedData];
+  // Filter data
+  const filteredData = useMemo(() => {
+    if (!filterText) return processedData;
 
-    if (filterText) {
-      const search = filterText.toLowerCase();
-      data = data.filter(row =>
-        Object.values(row).some(val =>
-          String(val).toLowerCase().includes(search)
-        )
-      );
-    }
+    const search = filterText.toLowerCase();
+    return processedData.filter(row =>
+      Object.values(row).some(val =>
+        String(val).toLowerCase().includes(search)
+      )
+    );
+  }, [processedData, filterText]);
 
-    if (sortBy === 'url') {
-      data.sort((a, b) => (a['Target-URL'] || '').localeCompare(b['Target-URL'] || ''));
-    } else if (sortBy === 'ranking') {
-      data.sort((a, b) => (a._currentRanking || 999) - (b._currentRanking || 999));
-    } else if (sortBy === 'volume') {
-      data.sort((a, b) => parseInt(b['SV'] || 0) - parseInt(a['SV'] || 0));
-    } else if (sortBy === 'category') {
-      data.sort((a, b) => (a['Main Category'] || '').localeCompare(b['Main Category'] || ''));
-    } else if (sortBy === 'recommendation') {
-      const order = { 'review': 0, 'create-new': 1, 'use-existing': 2, 'keep': 3 };
-      data.sort((a, b) => (order[a._recommendation] || 99) - (order[b._recommendation] || 99));
-    }
-
-    return data;
-  }, [processedData, filterText, sortBy]);
-
+  // Group by URL maintaining original order
   const groupedByURL = useMemo(() => {
-    const groups = {};
-    sortedData.forEach(row => {
-      const url = row['Target-URL'] || 'Sin URL';
-      if (!groups[url]) {
-        groups[url] = {
+    const groups = new Map();
+
+    // Initialize groups in URL order
+    for (const url of urlOrder) {
+      groups.set(url, {
+        keywords: [],
+        totalVolume: 0,
+        expansionCount: 0
+      });
+    }
+
+    // Fill groups
+    for (const row of filteredData) {
+      const url = row['Target-URL'];
+      if (!groups.has(url)) {
+        groups.set(url, {
           keywords: [],
           totalVolume: 0,
-          source: row._source,
-          recommendation: row._recommendation,
-          message: row._message,
-          alternatives: row._alternatives || [],
-          exists: row['URL exists']
-        };
+          expansionCount: 0
+        });
       }
-      groups[url].keywords.push(row);
-      groups[url].totalVolume += parseInt(row['SV'] || 0);
-    });
+      const group = groups.get(url);
+      group.keywords.push(row);
+      group.totalVolume += parseInt(row['SV'] || 0);
+      if (row._isExpansion) group.expansionCount++;
+    }
 
-    // Sort groups: review first, then new, then existing
-    return Object.entries(groups).sort((a, b) => {
-      const order = { 'review': 0, 'create-new': 1, 'use-existing': 2, 'keep': 3 };
-      return (order[a[1].recommendation] || 99) - (order[b[1].recommendation] || 99);
-    });
-  }, [sortedData]);
+    // Convert to array maintaining order
+    const result = [];
+    for (const url of urlOrder) {
+      if (groups.has(url) && groups.get(url).keywords.length > 0) {
+        result.push([url, groups.get(url)]);
+      }
+    }
+
+    // Add any URLs not in urlOrder (shouldn't happen but just in case)
+    for (const [url, group] of groups.entries()) {
+      if (!urlOrder.includes(url) && group.keywords.length > 0) {
+        result.push([url, group]);
+      }
+    }
+
+    return result;
+  }, [filteredData, urlOrder]);
 
   const toggleExpand = (url) => {
     const newExpanded = new Set(expandedUrls);
@@ -91,6 +101,15 @@ const ResultsStep = ({
       newExpanded.add(url);
     }
     setExpandedUrls(newExpanded);
+  };
+
+  const toggleExpandAll = () => {
+    if (expandAll) {
+      setExpandedUrls(new Set());
+    } else {
+      setExpandedUrls(new Set(groupedByURL.map(([url]) => url)));
+    }
+    setExpandAll(!expandAll);
   };
 
   const startEdit = (id, field, currentValue) => {
@@ -110,16 +129,6 @@ const ResultsStep = ({
     setEditValue('');
   };
 
-  const getRecommendationStyle = (rec) => {
-    switch (rec) {
-      case 'keep': return { bg: 'bg-blue-600', text: 'Mantener (SISTRIX)', icon: CheckCircle };
-      case 'use-existing': return { bg: 'bg-green-600', text: 'URL existente', icon: CheckCircle };
-      case 'review': return { bg: 'bg-amber-500', text: 'Revisar', icon: AlertCircle };
-      case 'create-new': return { bg: 'bg-purple-600', text: 'Crear nueva', icon: Plus };
-      default: return { bg: 'bg-gray-600', text: 'Pendiente', icon: AlertCircle };
-    }
-  };
-
   const getConfidenceBadge = (confidence) => {
     switch (confidence) {
       case 'high': return <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">Alta</span>;
@@ -132,25 +141,43 @@ const ResultsStep = ({
     <div className="space-y-6">
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
-          <div className="text-2xl font-bold text-green-600">{stats.existingPages}</div>
-          <div className="text-sm text-gray-600">URLs existentes</div>
+        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
+          <div className="text-2xl font-bold text-blue-600">{stats.uniqueUrls}</div>
+          <div className="text-sm text-gray-600">URLs únicas</div>
         </div>
         <div className="bg-white rounded-lg shadow p-4 border-l-4 border-purple-500">
-          <div className="text-2xl font-bold text-purple-600">{stats.newPages}</div>
-          <div className="text-sm text-gray-600">Páginas nuevas</div>
+          <div className="text-2xl font-bold text-purple-600">{stats.totalKeywords}</div>
+          <div className="text-sm text-gray-600">Keywords totales</div>
+        </div>
+        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
+          <div className="text-2xl font-bold text-green-600">{stats.totalVolume.toLocaleString()}</div>
+          <div className="text-sm text-gray-600">Volumen total</div>
         </div>
         <div className="bg-white rounded-lg shadow p-4 border-l-4 border-amber-500">
-          <div className="text-2xl font-bold text-amber-600">{stats.needsReview}</div>
-          <div className="text-sm text-gray-600">Requieren revisión</div>
+          <div className="text-2xl font-bold text-amber-600">{stats.expansions}</div>
+          <div className="text-sm text-gray-600">Expansiones</div>
         </div>
         <div className="bg-white rounded-lg shadow p-4 border-l-4 border-red-500">
           <div className="text-2xl font-bold text-red-600">{discardedData.length}</div>
           <div className="text-sm text-gray-600">Descartadas</div>
         </div>
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-indigo-500">
-          <div className="text-2xl font-bold text-indigo-600">{stats.highConfidence}</div>
-          <div className="text-sm text-gray-600">Alta confianza</div>
+      </div>
+
+      {/* Category breakdown */}
+      <div className="bg-white rounded-lg shadow p-4">
+        <h3 className="font-semibold text-gray-700 mb-3">Distribución por Categoría</h3>
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(stats.categories)
+            .sort((a, b) => b[1] - a[1])
+            .map(([cat, count]) => (
+              <span
+                key={cat}
+                className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-sm"
+              >
+                {cat}: {count}
+              </span>
+            ))
+          }
         </div>
       </div>
 
@@ -158,9 +185,9 @@ const ResultsStep = ({
         {/* Header */}
         <div className="flex flex-wrap justify-between items-start gap-4 mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-gray-800">Resultados del Análisis</h2>
+            <h2 className="text-2xl font-bold text-gray-800">Resultados por URL</h2>
             <p className="text-sm text-gray-500 mt-1">
-              {processedData.length} keywords procesadas · {Object.keys(groupedByURL).length} URLs únicas
+              {stats.totalKeywords} keywords en {stats.uniqueUrls} URLs (orden original)
             </p>
           </div>
 
@@ -193,7 +220,14 @@ const ResultsStep = ({
             <div className="grid gap-2">
               {discardedData.map((item, idx) => (
                 <div key={idx} className="flex justify-between items-center text-sm bg-white p-3 rounded-lg shadow-sm">
-                  <span className="font-medium">{item.keyword}</span>
+                  <div>
+                    <span className="font-medium">{item.keyword}</span>
+                    {item.url && (
+                      <span className="text-gray-400 ml-2 text-xs truncate max-w-xs inline-block align-middle">
+                        ({item.url})
+                      </span>
+                    )}
+                  </div>
                   <span className="text-xs text-red-600 bg-red-100 px-2 py-1 rounded">
                     {item.reason}
                   </span>
@@ -215,44 +249,37 @@ const ResultsStep = ({
               className="w-full pl-10 pr-4 py-2 border-2 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition"
             />
           </div>
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-            className="px-4 py-2 border-2 rounded-lg bg-white focus:border-indigo-500"
+          <button
+            onClick={toggleExpandAll}
+            className="px-4 py-2 border-2 rounded-lg hover:bg-gray-50 transition"
           >
-            <option value="url">Agrupar por URL</option>
-            <option value="recommendation">Por Recomendación</option>
-            <option value="volume">Por Volumen</option>
-            <option value="category">Por Categoría</option>
-            <option value="ranking">Por Ranking</option>
-          </select>
+            {expandAll ? 'Colapsar todo' : 'Expandir todo'}
+          </button>
         </div>
 
         {/* URL Groups */}
         <div className="space-y-3">
-          {groupedByURL.map(([url, group]) => {
-            const recStyle = getRecommendationStyle(group.recommendation);
-            const RecIcon = recStyle.icon;
+          {groupedByURL.map(([url, group], urlIndex) => {
             const isExpanded = expandedUrls.has(url);
-            const primaryKw = group.keywords[0];
 
             return (
               <div key={url} className="border-2 rounded-lg overflow-hidden">
                 {/* URL Header */}
                 <div
-                  className={`p-4 text-white cursor-pointer ${recStyle.bg}`}
+                  className="p-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white cursor-pointer"
                   onClick={() => toggleExpand(url)}
                 >
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
-                        <RecIcon size={16} />
+                        <Link2 size={16} />
                         <span className="text-xs font-medium bg-white/20 px-2 py-0.5 rounded">
-                          {recStyle.text}
+                          #{urlIndex + 1}
                         </span>
-                        {group.message && (
-                          <span className="text-xs bg-black/20 px-2 py-0.5 rounded">
-                            {group.message}
+                        {group.expansionCount > 0 && (
+                          <span className="text-xs bg-amber-400/30 px-2 py-0.5 rounded flex items-center gap-1">
+                            <Sparkles size={12} />
+                            {group.expansionCount} expansiones
                           </span>
                         )}
                       </div>
@@ -268,117 +295,108 @@ const ResultsStep = ({
                       {isExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
                     </div>
                   </div>
-
-                  {/* Alternatives hint */}
-                  {group.alternatives?.length > 0 && (
-                    <div className="mt-2 text-xs opacity-80">
-                      {group.alternatives.length} alternativa(s) disponible(s)
-                    </div>
-                  )}
                 </div>
 
                 {/* Expanded Content */}
                 {isExpanded && (
                   <div className="bg-gray-50">
-                    {/* Alternatives */}
-                    {group.alternatives?.length > 0 && (
-                      <div className="p-3 bg-amber-50 border-b">
-                        <div className="text-xs font-semibold text-amber-800 mb-2">
-                          Alternativas sugeridas:
-                        </div>
-                        <div className="space-y-1">
-                          {group.alternatives.map((alt, i) => (
-                            <div key={i} className="flex items-center gap-2 text-xs">
-                              <ExternalLink size={12} className="text-amber-600" />
-                              <span className="font-mono text-gray-700">{alt.url}</span>
-                              <span className="text-amber-600">— {alt.reason}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    {/* Table Header */}
+                    <div className="grid grid-cols-12 gap-2 p-3 bg-gray-100 border-b text-xs font-semibold text-gray-600 uppercase">
+                      <div className="col-span-1"></div>
+                      <div className="col-span-3">Keyword</div>
+                      <div className="col-span-2">Categoría</div>
+                      <div className="col-span-2">Subcategoría</div>
+                      <div className="col-span-1 text-center">Vol</div>
+                      <div className="col-span-1 text-center">Intent</div>
+                      <div className="col-span-2 text-center">Info</div>
+                    </div>
 
                     {/* Keywords */}
                     <div className="divide-y">
                       {group.keywords.map((row) => (
-                        <div key={row.id} className="p-3 flex items-center gap-3 hover:bg-white transition">
-                          <button
-                            onClick={() => onRemoveKeyword(row.id)}
-                            className="text-red-400 hover:text-red-600 transition"
-                            title="Eliminar keyword"
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                        <div
+                          key={row.id}
+                          className={`grid grid-cols-12 gap-2 p-3 items-center hover:bg-white transition text-sm ${
+                            row._isExpansion ? 'bg-amber-50/50' : ''
+                          }`}
+                        >
+                          {/* Delete */}
+                          <div className="col-span-1">
+                            <button
+                              onClick={() => onRemoveKeyword(row.id)}
+                              className="text-red-400 hover:text-red-600 transition p-1"
+                              title="Eliminar keyword"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
 
-                          <div className="flex-1 grid grid-cols-7 gap-2 text-sm items-center">
-                            {/* Category */}
-                            <div className="flex items-center gap-1">
-                              {editingCell?.id === row.id && editingCell?.field === 'Main Category' ? (
-                                <div className="flex gap-1">
-                                  <input
-                                    type="text"
-                                    value={editValue}
-                                    onChange={(e) => setEditValue(e.target.value)}
-                                    className="w-20 p-1 border rounded text-xs"
-                                    autoFocus
-                                  />
-                                  <button onClick={saveEdit} className="text-green-600"><Check size={14} /></button>
-                                  <button onClick={cancelEdit} className="text-red-600"><X size={14} /></button>
-                                </div>
-                              ) : (
-                                <div
-                                  className="cursor-pointer hover:bg-indigo-50 rounded px-1 flex items-center gap-1 group"
-                                  onClick={() => startEdit(row.id, 'Main Category', row['Main Category'])}
-                                >
-                                  <span className="text-xs font-medium text-indigo-700 bg-indigo-100 px-2 py-1 rounded">
-                                    {row['Main Category']}
-                                  </span>
-                                  <Edit2 size={10} className="text-gray-400 opacity-0 group-hover:opacity-100" />
-                                </div>
-                              )}
-                            </div>
+                          {/* Keyword */}
+                          <div className="col-span-3 font-medium text-gray-800 truncate flex items-center gap-1" title={row['Keyword']}>
+                            {row._isExpansion && (
+                              <Sparkles size={14} className="text-amber-500 flex-shrink-0" title={`Expansión de: ${row._expansionSource}`} />
+                            )}
+                            <span className="truncate">{row['Keyword']}</span>
+                          </div>
 
-                            {/* SubCategory */}
-                            <span className="text-xs text-gray-500 truncate" title={row['Sub Category 1']}>
+                          {/* Category */}
+                          <div className="col-span-2">
+                            {editingCell?.id === row.id && editingCell?.field === 'Main Category' ? (
+                              <div className="flex gap-1">
+                                <input
+                                  type="text"
+                                  value={editValue}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  className="w-full p-1 border rounded text-xs"
+                                  autoFocus
+                                />
+                                <button onClick={saveEdit} className="text-green-600"><Check size={14} /></button>
+                                <button onClick={cancelEdit} className="text-red-600"><X size={14} /></button>
+                              </div>
+                            ) : (
+                              <div
+                                className="cursor-pointer hover:bg-indigo-50 rounded px-1 flex items-center gap-1 group"
+                                onClick={() => startEdit(row.id, 'Main Category', row['Main Category'])}
+                              >
+                                <span className="text-xs font-medium text-indigo-700 bg-indigo-100 px-2 py-1 rounded truncate">
+                                  {row['Main Category']}
+                                </span>
+                                <Edit2 size={10} className="text-gray-400 opacity-0 group-hover:opacity-100 flex-shrink-0" />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* SubCategory */}
+                          <div className="col-span-2">
+                            <span className="text-xs text-gray-500 truncate block" title={row['Sub Category 1']}>
                               {row['Sub Category 1'] || '—'}
                             </span>
+                          </div>
 
-                            {/* Keyword */}
-                            <span className="font-medium text-gray-800 truncate col-span-2" title={row['Keyword']}>
-                              {row['Keyword']}
+                          {/* Volume */}
+                          <div className="col-span-1 text-center font-mono text-gray-600">
+                            {parseInt(row['SV'] || 0).toLocaleString()}
+                          </div>
+
+                          {/* Intent */}
+                          <div className="col-span-1 text-center">
+                            <span className={`text-xs px-2 py-0.5 rounded ${
+                              row['KW Intent'] === 'Transactional'
+                                ? 'bg-purple-100 text-purple-700'
+                                : 'bg-sky-100 text-sky-700'
+                            }`}>
+                              {row['KW Intent']?.charAt(0) || 'I'}
                             </span>
+                          </div>
 
-                            {/* Volume */}
-                            <span className="text-center font-mono text-gray-600">
-                              {parseInt(row['SV'] || 0).toLocaleString()}
-                            </span>
-
-                            {/* Ranking */}
-                            <span className="text-center">
-                              {row._currentRanking ? (
-                                <span className={`font-bold ${
-                                  row._currentRanking <= 3 ? 'text-green-600' :
-                                  row._currentRanking <= 10 ? 'text-blue-600' :
-                                  row._currentRanking <= 20 ? 'text-amber-600' : 'text-gray-500'
-                                }`}>
-                                  #{row._currentRanking}
-                                </span>
-                              ) : (
-                                <span className="text-gray-300">—</span>
-                              )}
-                            </span>
-
-                            {/* Confidence & Intent */}
-                            <div className="flex items-center gap-1 justify-end">
-                              {getConfidenceBadge(row._confidence)}
-                              <span className={`text-xs px-2 py-0.5 rounded ${
-                                row['KW Intent'] === 'Transactional'
-                                  ? 'bg-purple-100 text-purple-700'
-                                  : 'bg-sky-100 text-sky-700'
-                              }`}>
-                                {row['KW Intent']?.charAt(0)}
+                          {/* Confidence & Source */}
+                          <div className="col-span-2 flex items-center justify-center gap-1">
+                            {getConfidenceBadge(row._confidence)}
+                            {row._sistrixEnriched && (
+                              <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded" title="Datos de SISTRIX">
+                                S
                               </span>
-                            </div>
+                            )}
                           </div>
                         </div>
                       ))}

@@ -5,15 +5,14 @@ import MappingStep from './MappingStep';
 import ProcessingStep from './ProcessingStep';
 import ResultsStep from './ResultsStep';
 import { parseCSV, downloadCSV } from '../utils/csv';
-import { findBestURL } from '../utils/similarity';
 import { classifyKeywords } from '../services/classifier';
 import { classifyKeywordsLocally } from '../services/localClassifier';
-import { getSistrixData } from '../services/sistrix';
+import { getSistrixData, getSearchVolume } from '../services/sistrix';
+import { analyzeForExpansion, calculateSemanticSimilarity } from '../services/semanticExpansion';
 
 const EXPORT_HEADERS = [
-  'Main Category', 'Sub Category 1', 'Sub Category 2', 'Sub Category 3',
-  'Keyword', 'SV', 'KW Intent', 'Page Type', 'URL exists', 'Target-URL',
-  'Client', 'Ranking-URL'
+  'Target-URL', 'Keyword', 'SV', 'Main Category', 'Sub Category 1',
+  'KW Intent', 'Confidence', 'Source', 'Is Expansion'
 ];
 
 const SEOAutomator = () => {
@@ -21,12 +20,12 @@ const SEOAutomator = () => {
   const [config, setConfig] = useState({
     sitemap: '',
     urlInventory: '',
-    domain: 'taxfix.es',
+    domain: '',
     country: 'es',
     useSistrix: false,
     sistrixApiKey: '',
     anthropicApiKey: '',
-    useAI: false // Use local classifier by default
+    useAI: false
   });
 
   // File state
@@ -34,7 +33,8 @@ const SEOAutomator = () => {
   const [historicalFile, setHistoricalFile] = useState(null);
   const [historicalData, setHistoricalData] = useState([]);
   const [availableColumns, setAvailableColumns] = useState([]);
-  const [columnMapping, setColumnMapping] = useState({ keyword: '', volume: '' });
+  const [previewData, setPreviewData] = useState([]);
+  const [columnMapping, setColumnMapping] = useState({ url: '', keyword: '', volume: '' });
 
   // Processing state
   const [step, setStep] = useState('config');
@@ -46,6 +46,7 @@ const SEOAutomator = () => {
   // Results state
   const [processedData, setProcessedData] = useState([]);
   const [discardedData, setDiscardedData] = useState([]);
+  const [urlOrder, setUrlOrder] = useState([]);
 
   // Handle keywords file upload
   const handleKeywordsUpload = useCallback((e) => {
@@ -55,8 +56,9 @@ const SEOAutomator = () => {
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const { headers } = parseCSV(event.target.result);
+        const { headers, rows } = parseCSV(event.target.result);
         setAvailableColumns(headers);
+        setPreviewData(rows.slice(0, 5)); // Store preview data
         setKeywordsFile(file);
         setStep('mapping');
       } catch (error) {
@@ -92,12 +94,11 @@ const SEOAutomator = () => {
 
   // Main processing function
   const processKeywords = useCallback(async () => {
-    if (!keywordsFile || !columnMapping.keyword || !columnMapping.volume) {
+    if (!keywordsFile || !columnMapping.url || !columnMapping.keyword || !columnMapping.volume) {
       alert('Completa el mapeo de columnas');
       return;
     }
 
-    // Check if AI is enabled but no API key
     if (config.useAI && !config.anthropicApiKey) {
       alert('Ingresa tu API Key de Anthropic para usar clasificación con IA');
       setStep('config');
@@ -107,121 +108,173 @@ const SEOAutomator = () => {
     setProcessing(true);
     setStep('processing');
     setProcessedCount(0);
-    setCurrentPhase('classifying');
+    setCurrentPhase('loading');
 
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
         const { rows } = parseCSV(event.target.result);
-        const inventoryUrls = config.urlInventory.split('\n').filter(u => u.trim());
-        const sitemapUrls = config.sitemap.split('\n').filter(u => u.trim());
 
-        const keywordsToProcess = rows.map(row => row[columnMapping.keyword] || '').filter(k => k);
-        setTotalCount(keywordsToProcess.length);
+        // Step 1: Group keywords by URL (maintaining original order)
+        setCurrentPhase('grouping');
+        const urlGroups = new Map();
+        const urlOrderList = [];
 
-        // Phase 1: Classification (AI or Local)
+        for (const row of rows) {
+          const url = (row[columnMapping.url] || '').trim();
+          const keyword = (row[columnMapping.keyword] || '').trim();
+          const volume = row[columnMapping.volume] || '0';
+
+          if (!url || !keyword) continue;
+
+          if (!urlGroups.has(url)) {
+            urlGroups.set(url, []);
+            urlOrderList.push(url); // Track order
+          }
+
+          urlGroups.get(url).push({
+            keyword,
+            volume: parseInt(volume) || 0,
+            originalVolume: volume
+          });
+        }
+
+        setUrlOrder(urlOrderList);
+        setTotalCount(rows.length);
+
+        // Step 2: Classify all keywords
         setCurrentPhase('classifying');
-        let classifications;
+        const allKeywords = rows.map(row => row[columnMapping.keyword] || '').filter(k => k);
 
+        let classifications;
         if (config.useAI && config.anthropicApiKey) {
-          // Use Claude AI for classification
           classifications = await classifyKeywords(
-            keywordsToProcess,
+            allKeywords,
             config.anthropicApiKey,
             historicalData,
-            (current, total) => setProcessedCount(current)
+            (current) => setProcessedCount(current)
           );
         } else {
-          // Use local rule-based classification
           classifications = await classifyKeywordsLocally(
-            keywordsToProcess,
+            allKeywords,
             historicalData,
-            (current, total) => setProcessedCount(current)
+            (current) => setProcessedCount(current)
           );
         }
 
-        // Build results
+        // Build classification map
+        const classificationMap = new Map();
+        allKeywords.forEach((kw, idx) => {
+          classificationMap.set(kw.toLowerCase().trim(), classifications[idx]);
+        });
+
+        // Step 3: Process each URL group
+        setCurrentPhase('processing');
         const results = [];
         const discarded = [];
+        let processedIdx = 0;
 
-        for (let idx = 0; idx < rows.length; idx++) {
-          const row = rows[idx];
-          const keyword = row[columnMapping.keyword] || '';
-          const volume = row[columnMapping.volume] || '0';
-          const classification = classifications[idx];
+        for (const url of urlOrderList) {
+          const urlKeywords = urlGroups.get(url);
 
-          if (!keyword) continue;
+          for (const kwData of urlKeywords) {
+            const classification = classificationMap.get(kwData.keyword.toLowerCase().trim()) || {};
 
-          // Check if should be discarded
-          if (classification?.shouldDiscard) {
-            discarded.push({
-              id: idx,
-              keyword,
-              volume,
-              reason: classification.discardReason || 'Descartada por IA'
+            // Check if should be discarded
+            if (classification.shouldDiscard) {
+              discarded.push({
+                id: processedIdx,
+                keyword: kwData.keyword,
+                volume: kwData.volume,
+                url,
+                reason: classification.discardReason || 'Descartada'
+              });
+              processedIdx++;
+              continue;
+            }
+
+            // Get volume from SISTRIX if not in CSV and SISTRIX is enabled
+            let finalVolume = kwData.volume;
+            let sistrixEnriched = false;
+
+            if (config.useSistrix && config.sistrixApiKey && (!kwData.volume || kwData.volume === 0)) {
+              setCurrentPhase('enriching');
+              const sistrixVolume = await getSearchVolume(
+                kwData.keyword,
+                config.sistrixApiKey,
+                config.country
+              );
+              if (sistrixVolume) {
+                finalVolume = sistrixVolume;
+                sistrixEnriched = true;
+              }
+              // Rate limiting
+              await new Promise(r => setTimeout(r, 150));
+            }
+
+            results.push({
+              id: processedIdx,
+              'Target-URL': url,
+              'Keyword': kwData.keyword,
+              'SV': finalVolume,
+              'Main Category': classification.mainCategory || 'Otros',
+              'Sub Category 1': classification.subCategory || '',
+              'KW Intent': classification.intent || 'Informational',
+              '_confidence': classification.confidence || 'low',
+              '_isExpansion': false,
+              '_sistrixEnriched': sistrixEnriched,
+              '_urlOrder': urlOrderList.indexOf(url)
             });
-            continue;
+
+            processedIdx++;
+            setProcessedCount(processedIdx);
           }
 
-          // Get SISTRIX data if enabled
-          let sistrixData = null;
+          // Step 4: Find related keywords for high-volume terms (>20 searches)
           if (config.useSistrix && config.sistrixApiKey) {
-            setCurrentPhase('enriching');
-            sistrixData = await getSistrixData(
-              keyword,
+            setCurrentPhase('expanding');
+            const expansions = await analyzeForExpansion(
+              urlKeywords,
               config.sistrixApiKey,
-              config.country,
-              config.domain
+              config.country
             );
-            // Rate limiting
-            if (idx % 5 === 0) {
-              await new Promise(r => setTimeout(r, 500));
+
+            for (const exp of expansions) {
+              for (const related of exp.expansions) {
+                // Check if this keyword isn't already in results
+                const exists = results.some(r =>
+                  r['Keyword'].toLowerCase() === related.keyword.toLowerCase() ||
+                  calculateSemanticSimilarity(r['Keyword'], related.keyword) > 0.85
+                );
+
+                if (!exists) {
+                  // Classify the new keyword
+                  const newClassification = classificationMap.get(related.keyword.toLowerCase()) ||
+                    (await classifyKeywordsLocally([related.keyword], historicalData))[0] ||
+                    {};
+
+                  results.push({
+                    id: processedIdx++,
+                    'Target-URL': url,
+                    'Keyword': related.keyword,
+                    'SV': related.searchVolume || 0,
+                    'Main Category': newClassification.mainCategory || 'Otros',
+                    'Sub Category 1': newClassification.subCategory || '',
+                    'KW Intent': newClassification.intent || 'Informational',
+                    '_confidence': 'medium',
+                    '_isExpansion': true,
+                    '_expansionSource': exp.seedKeyword,
+                    '_sistrixEnriched': true,
+                    '_urlOrder': urlOrderList.indexOf(url)
+                  });
+                }
+              }
             }
           }
-
-          // Find best URL
-          setCurrentPhase('mapping');
-          const mainCategory = classification?.mainCategory || 'Otros';
-          const subCategory = classification?.subCategory || '';
-          const intent = classification?.intent || 'Informational';
-          const confidence = classification?.confidence || 'low';
-
-          const urlMatch = findBestURL(
-            keyword,
-            mainCategory,
-            inventoryUrls,
-            sitemapUrls,
-            sistrixData,
-            config.domain,
-            classification // Pass full classification for better matching
-          );
-
-          results.push({
-            id: idx,
-            'Main Category': mainCategory,
-            'Sub Category 1': subCategory,
-            'Sub Category 2': '',
-            'Sub Category 3': '',
-            'Keyword': keyword,
-            'SV': sistrixData?.searchVolume || volume,
-            'KW Intent': intent,
-            'Page Type': intent === 'Transactional' ? 'Landing Page' : 'Blog Post',
-            'URL exists': urlMatch.exists,
-            'Target-URL': urlMatch.url,
-            'Client': '',
-            'Ranking-URL': sistrixData?.rankingUrl || '',
-            _source: urlMatch.source,
-            _currentRanking: sistrixData?.currentRanking || null,
-            _sistrixEnriched: !!sistrixData,
-            _recommendation: urlMatch.recommendation,
-            _message: urlMatch.message,
-            _alternatives: urlMatch.alternatives || [],
-            _confidence: confidence,
-            _matchScore: urlMatch.score
-          });
-
-          setProcessedCount(idx + 1);
         }
+
+        // Sort results by URL order
+        results.sort((a, b) => a._urlOrder - b._urlOrder);
 
         setProcessedData(results);
         setDiscardedData(discarded);
@@ -254,6 +307,7 @@ const SEOAutomator = () => {
         id,
         keyword: row['Keyword'],
         volume: row['SV'],
+        url: row['Target-URL'],
         reason: 'Eliminada manualmente'
       }]);
     }
@@ -262,8 +316,14 @@ const SEOAutomator = () => {
 
   // Export to CSV
   const handleExport = useCallback(() => {
-    const filename = `Keyword-Strategy-${new Date().toISOString().split('T')[0]}.csv`;
-    downloadCSV(processedData, EXPORT_HEADERS, filename);
+    const exportData = processedData.map(row => ({
+      ...row,
+      'Confidence': row._confidence,
+      'Source': row._isExpansion ? 'Expansión' : 'Original',
+      'Is Expansion': row._isExpansion ? 'Sí' : 'No'
+    }));
+    const filename = `Keyword-Mapping-${new Date().toISOString().split('T')[0]}.csv`;
+    downloadCSV(exportData, EXPORT_HEADERS, filename);
   }, [processedData]);
 
   // Reset to start
@@ -271,11 +331,13 @@ const SEOAutomator = () => {
     setStep('config');
     setKeywordsFile(null);
     setAvailableColumns([]);
-    setColumnMapping({ keyword: '', volume: '' });
+    setPreviewData([]);
+    setColumnMapping({ url: '', keyword: '', volume: '' });
     setProcessedData([]);
     setDiscardedData([]);
     setProcessedCount(0);
     setTotalCount(0);
+    setUrlOrder([]);
   }, []);
 
   return (
@@ -285,11 +347,11 @@ const SEOAutomator = () => {
         <header className="mb-8 text-center">
           <h1 className="text-3xl md:text-4xl font-bold text-indigo-900 mb-2 flex items-center justify-center gap-3">
             <Sparkles className="text-amber-500" size={32} />
-            SEO Keyword Automator
+            SEO Keyword Mapper
             <TrendingUp className="text-green-500" size={32} />
           </h1>
           <p className="text-gray-600">
-            Clasificación automática con Claude AI + Enriquecimiento SISTRIX
+            Mapea keywords a URLs con clasificación inteligente
           </p>
 
           {/* Step indicator */}
@@ -354,7 +416,8 @@ const SEOAutomator = () => {
             onBack={() => setStep('config')}
             onProcess={processKeywords}
             useSistrix={config.useSistrix}
-            isValid={columnMapping.keyword && columnMapping.volume}
+            isValid={columnMapping.url && columnMapping.keyword && columnMapping.volume}
+            previewData={previewData}
           />
         )}
 
@@ -376,12 +439,13 @@ const SEOAutomator = () => {
             onExport={handleExport}
             useSistrix={config.useSistrix}
             historicalDataCount={historicalData.length}
+            urlOrder={urlOrder}
           />
         )}
 
         {/* Footer */}
         <footer className="mt-12 text-center text-sm text-gray-400">
-          <p>Powered by Claude AI + SISTRIX API</p>
+          <p>SEO Keyword Mapper v2.0</p>
         </footer>
       </div>
     </div>
