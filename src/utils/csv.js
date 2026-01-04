@@ -1,5 +1,6 @@
 /**
  * Parse CSV text into headers and rows
+ * Auto-detects delimiter (comma, semicolon, or tab)
  * @param {string} text - Raw CSV text
  * @returns {{ headers: string[], rows: Object[] }}
  */
@@ -7,8 +8,23 @@ export const parseCSV = (text) => {
   const lines = text.split('\n').filter(l => l.trim());
   if (lines.length === 0) return { headers: [], rows: [] };
 
-  // Handle quoted fields with commas
-  const parseLine = (line) => {
+  // Auto-detect delimiter from first line
+  const firstLine = lines[0];
+  let delimiter = ',';
+
+  // Count occurrences of potential delimiters
+  const semicolonCount = (firstLine.match(/;/g) || []).length;
+  const commaCount = (firstLine.match(/,/g) || []).length;
+  const tabCount = (firstLine.match(/\t/g) || []).length;
+
+  if (semicolonCount > commaCount && semicolonCount > tabCount) {
+    delimiter = ';';
+  } else if (tabCount > commaCount && tabCount > semicolonCount) {
+    delimiter = '\t';
+  }
+
+  // Handle quoted fields
+  const parseLine = (line, delim) => {
     const result = [];
     let current = '';
     let inQuotes = false;
@@ -17,7 +33,7 @@ export const parseCSV = (text) => {
       const char = line[i];
       if (char === '"') {
         inQuotes = !inQuotes;
-      } else if (char === ',' && !inQuotes) {
+      } else if (char === delim && !inQuotes) {
         result.push(current.trim().replace(/^"|"$/g, ''));
         current = '';
       } else {
@@ -28,9 +44,9 @@ export const parseCSV = (text) => {
     return result;
   };
 
-  const headers = parseLine(lines[0]);
+  const headers = parseLine(lines[0], delimiter);
   const rows = lines.slice(1).map(line => {
-    const values = parseLine(line);
+    const values = parseLine(line, delimiter);
     const row = {};
     headers.forEach((h, i) => {
       row[h] = values[i] || '';
@@ -50,7 +66,7 @@ export const parseCSV = (text) => {
 export const generateCSV = (data, headers) => {
   const escapeField = (field) => {
     const str = String(field || '');
-    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes(';')) {
       return `"${str.replace(/"/g, '""')}"`;
     }
     return str;
