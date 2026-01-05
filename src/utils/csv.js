@@ -5,9 +5,14 @@
  * @returns {{ headers: string[], rows: Object[] }}
  */
 export const parseCSV = (text) => {
-  // Normalize line endings (handle Windows \r\n and Mac \r)
-  const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  const lines = normalizedText.split('\n').filter(l => l.trim());
+  // Remove BOM and normalize line endings
+  const normalizedText = text
+    .replace(/^\uFEFF/, '')           // Remove BOM
+    .replace(/\r\n/g, '\n')           // Windows line endings
+    .replace(/\r/g, '\n')             // Mac line endings
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ''); // Remove control characters
+
+  const lines = normalizedText.split('\n').map(l => l.trim()).filter(l => l);
   if (lines.length === 0) return { headers: [], rows: [] };
 
   // Auto-detect delimiter from first line
@@ -27,13 +32,16 @@ export const parseCSV = (text) => {
 
   // Clean a value: remove quotes, trim, and remove trailing delimiters
   const cleanValue = (val) => {
+    if (!val) return '';
     return val
       .trim()
-      .replace(/^"|"$/g, '')  // Remove surrounding quotes
-      .replace(/;+$/, '')      // Remove trailing semicolons
-      .replace(/,+$/, '')      // Remove trailing commas
+      .replace(/^["']+|["']+$/g, '')   // Remove surrounding quotes (single or double)
+      .replace(/[;,\s]+$/, '')          // Remove trailing semicolons, commas, whitespace
+      .replace(/^[;,\s]+/, '')          // Remove leading semicolons, commas, whitespace
       .trim();
   };
+
+  console.log('CSV Debug - Delimiter detected:', delimiter, '| First line:', firstLine.substring(0, 100));
 
   // Handle quoted fields
   const parseLine = (line, delim) => {
@@ -63,6 +71,8 @@ export const parseCSV = (text) => {
   };
 
   const headers = parseLine(lines[0], delimiter);
+  console.log('CSV Debug - Headers parsed:', headers);
+
   const rows = lines.slice(1).map(line => {
     const values = parseLine(line, delimiter);
     const row = {};
@@ -72,6 +82,7 @@ export const parseCSV = (text) => {
     return row;
   });
 
+  console.log('CSV Debug - First row:', rows[0]);
   return { headers, rows };
 };
 
