@@ -5,7 +5,9 @@
  * @returns {{ headers: string[], rows: Object[] }}
  */
 export const parseCSV = (text) => {
-  const lines = text.split('\n').filter(l => l.trim());
+  // Normalize line endings (handle Windows \r\n and Mac \r)
+  const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const lines = normalizedText.split('\n').filter(l => l.trim());
   if (lines.length === 0) return { headers: [], rows: [] };
 
   // Auto-detect delimiter from first line
