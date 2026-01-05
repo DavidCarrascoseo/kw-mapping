@@ -25,6 +25,16 @@ export const parseCSV = (text) => {
     delimiter = '\t';
   }
 
+  // Clean a value: remove quotes, trim, and remove trailing delimiters
+  const cleanValue = (val) => {
+    return val
+      .trim()
+      .replace(/^"|"$/g, '')  // Remove surrounding quotes
+      .replace(/;+$/, '')      // Remove trailing semicolons
+      .replace(/,+$/, '')      // Remove trailing commas
+      .trim();
+  };
+
   // Handle quoted fields
   const parseLine = (line, delim) => {
     const result = [];
@@ -36,13 +46,19 @@ export const parseCSV = (text) => {
       if (char === '"') {
         inQuotes = !inQuotes;
       } else if (char === delim && !inQuotes) {
-        result.push(current.trim().replace(/^"|"$/g, ''));
+        result.push(cleanValue(current));
         current = '';
       } else {
         current += char;
       }
     }
-    result.push(current.trim().replace(/^"|"$/g, ''));
+    result.push(cleanValue(current));
+
+    // Remove empty trailing columns
+    while (result.length > 0 && result[result.length - 1] === '') {
+      result.pop();
+    }
+
     return result;
   };
 
