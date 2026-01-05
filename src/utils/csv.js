@@ -12,7 +12,11 @@ export const parseCSV = (text) => {
     .replace(/\r/g, '\n')             // Mac line endings
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ''); // Remove control characters
 
-  const lines = normalizedText.split('\n').map(l => l.trim()).filter(l => l);
+  // Split lines and clean each one (remove trailing tabs, spaces, etc.)
+  const lines = normalizedText
+    .split('\n')
+    .map(l => l.replace(/[\t\s]+$/, '').trim())  // Remove trailing tabs and whitespace
+    .filter(l => l);
   if (lines.length === 0) return { headers: [], rows: [] };
 
   // Auto-detect delimiter from first line
