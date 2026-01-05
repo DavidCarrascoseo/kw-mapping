@@ -1,5 +1,5 @@
 import React from 'react';
-import { TrendingUp, Brain, Loader2, Link, Sparkles, FolderOpen } from 'lucide-react';
+import { TrendingUp, Brain, Loader2, Link, Sparkles, FolderOpen, Filter } from 'lucide-react';
 
 const ProcessingStep = ({
   processedCount,
@@ -12,10 +12,11 @@ const ProcessingStep = ({
   const phases = {
     loading: { label: 'Cargando datos...', desc: 'Leyendo el archivo CSV' },
     grouping: { label: 'Agrupando por URL...', desc: 'Organizando keywords por su URL asociada' },
+    cleaning: { label: 'Limpiando keywords...', desc: 'Eliminando duplicados, typos y keywords irrelevantes' },
     classifying: { label: 'Clasificando keywords...', desc: 'Analizando y categorizando cada keyword' },
     processing: { label: 'Procesando resultados...', desc: 'Construyendo el mapeo final' },
     enriching: { label: 'Consultando SISTRIX...', desc: 'Buscando volumen de búsqueda' },
-    expanding: { label: 'Buscando relacionadas...', desc: 'Encontrando keywords semánticamente relacionadas' }
+    expanding: { label: 'Expandiendo semánticamente...', desc: 'Encontrando keywords relacionadas usando keyword semilla' }
   };
 
   const current = phases[currentPhase] || { label: 'Procesando...', desc: 'Este proceso puede tomar unos minutos' };
@@ -27,6 +28,7 @@ const ProcessingStep = ({
           <Loader2 className="animate-spin text-indigo-600" size={64} />
           {currentPhase === 'classifying' && <Brain className="absolute inset-0 m-auto text-indigo-400" size={28} />}
           {currentPhase === 'grouping' && <FolderOpen className="absolute inset-0 m-auto text-indigo-400" size={28} />}
+          {currentPhase === 'cleaning' && <Filter className="absolute inset-0 m-auto text-orange-400" size={28} />}
           {currentPhase === 'processing' && <Link className="absolute inset-0 m-auto text-indigo-400" size={28} />}
           {currentPhase === 'expanding' && <Sparkles className="absolute inset-0 m-auto text-amber-400" size={28} />}
           {(currentPhase === 'enriching' || !currentPhase) && <TrendingUp className="absolute inset-0 m-auto text-green-400" size={28} />}
@@ -36,6 +38,9 @@ const ProcessingStep = ({
         )}
         {currentPhase === 'expanding' && (
           <Sparkles className="text-amber-500 animate-pulse" size={48} />
+        )}
+        {currentPhase === 'cleaning' && (
+          <Filter className="text-orange-500 animate-pulse" size={48} />
         )}
       </div>
 

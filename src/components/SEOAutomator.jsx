@@ -6,9 +6,10 @@ import ProcessingStep from './ProcessingStep';
 import ResultsStep from './ResultsStep';
 import { parseCSV, downloadCSV } from '../utils/csv';
 import { classifyKeywords } from '../services/classifier';
-import { classifyKeywordsLocally, classifyURLGroup } from '../services/localClassifier';
-import { getSistrixData, getSearchVolume } from '../services/sistrix';
+import { classifyKeywordsLocally, classifyURLGroup, extractTopics } from '../services/localClassifier';
+import { getSistrixData, getSearchVolume, getRelatedKeywords } from '../services/sistrix';
 import { analyzeForExpansion, calculateSemanticSimilarity } from '../services/semanticExpansion';
+import { cleanKeywordsForURL, findSeedKeyword, extractURLTopic, areSameKeyword } from '../services/keywordCleaner';
 
 const EXPORT_HEADERS = [
   'Target-URL', 'Keyword', 'SV', 'Categoría', 'Subcategoría 1', 'Subcategoría 2', 'KW Intent'
@@ -182,9 +183,8 @@ const SEOAutomator = () => {
         setUrlOrder(urlOrderList);
         setTotalCount(urlOrderList.length);
 
-        // Step 2: Classify each URL group
-        // All keywords in a URL get the same category (from URL) and subcategories (voted from keywords)
-        setCurrentPhase('classifying');
+        // Step 2: Clean and classify each URL group
+        setCurrentPhase('cleaning');
         const results = [];
         const discarded = [];
         let processedIdx = 0;
@@ -193,11 +193,36 @@ const SEOAutomator = () => {
         for (const url of urlOrderList) {
           const urlKeywords = urlGroups.get(url);
 
-          // Classify the entire URL group - all keywords share the same classification
-          const groupClassification = classifyURLGroup(url, urlKeywords, historicalData);
+          // Extract URL topics for cleaning and classification
+          const urlTopics = extractURLTopic(url);
 
-          for (const kwData of urlKeywords) {
-            // Check if individual keyword should be discarded
+          // Clean keywords: remove typos, duplicates, off-topic
+          const { cleaned: cleanedKeywords, discarded: discardedFromCleaning } = cleanKeywordsForURL(
+            url,
+            urlKeywords,
+            urlTopics
+          );
+
+          // Add cleaned discards to the discard list
+          for (const d of discardedFromCleaning) {
+            discarded.push({
+              id: processedIdx++,
+              keyword: d.keyword,
+              volume: d.volume || 0,
+              url,
+              reason: d.reason
+            });
+          }
+
+          // Classify the entire URL group - all keywords share the same classification
+          setCurrentPhase('classifying');
+          const groupClassification = classifyURLGroup(url, cleanedKeywords, historicalData);
+
+          // Find the best seed keyword for potential expansion
+          const seedKeyword = findSeedKeyword(cleanedKeywords, urlTopics);
+
+          for (const kwData of cleanedKeywords) {
+            // Check if individual keyword should be discarded by classifier
             const kwResult = groupClassification.keywordResults.find(
               r => (r.keyword || '').toLowerCase() === kwData.keyword.toLowerCase()
             );
@@ -239,8 +264,8 @@ const SEOAutomator = () => {
               'Keyword': kwData.keyword,
               'SV': finalVolume,
               'Categoría': groupClassification.mainCategory,
-              'Subcategoría 1': groupClassification.subCategory1 || '',
-              'Subcategoría 2': groupClassification.subCategory2 || '',
+              'Subcategoría 1': groupClassification.subCategory1 || 'Otros',
+              'Subcategoría 2': groupClassification.subCategory2 || '(General)',
               'KW Intent': groupClassification.intent,
               '_confidence': groupClassification.subCategory1 ? 'high' : 'medium',
               '_isExpansion': false,
@@ -251,42 +276,58 @@ const SEOAutomator = () => {
             processedIdx++;
           }
 
-          // Step 3: Find related keywords for high-volume terms (>20 searches)
-          if (config.useSistrix && config.sistrixApiKey) {
+          // Step 3: Expand keywords using seed keyword
+          if (config.useSistrix && config.sistrixApiKey && seedKeyword) {
             setCurrentPhase('expanding');
-            const expansions = await analyzeForExpansion(
-              urlKeywords,
-              config.sistrixApiKey,
-              config.country
-            );
 
-            for (const exp of expansions) {
-              for (const related of exp.expansions) {
+            // Use the seed keyword for semantic expansion
+            try {
+              const relatedKeywords = await getRelatedKeywords(
+                seedKeyword.keyword,
+                config.sistrixApiKey,
+                config.country
+              );
+
+              for (const related of relatedKeywords) {
+                // Check if keyword already exists (exact or similar)
                 const exists = results.some(r =>
-                  r['Keyword'].toLowerCase() === related.keyword.toLowerCase() ||
-                  calculateSemanticSimilarity(r['Keyword'], related.keyword) > 0.85
+                  r['Target-URL'] === url && (
+                    areSameKeyword(r['Keyword'], related.keyword) ||
+                    calculateSemanticSimilarity(r['Keyword'], related.keyword) > 0.85
+                  )
                 );
 
-                if (!exists) {
-                  // Expansion keywords inherit the URL's classification
-                  results.push({
-                    id: processedIdx++,
-                    'Target-URL': url,
-                    'Keyword': related.keyword,
-                    'SV': related.searchVolume || 0,
-                    'Categoría': groupClassification.mainCategory,
-                    'Subcategoría 1': groupClassification.subCategory1 || '',
-                    'Subcategoría 2': groupClassification.subCategory2 || '',
-                    'KW Intent': groupClassification.intent,
-                    '_confidence': 'medium',
-                    '_isExpansion': true,
-                    '_expansionSource': exp.seedKeyword,
-                    '_sistrixEnriched': true,
-                    '_urlOrder': urlIdx
-                  });
+                if (!exists && related.searchVolume > 0) {
+                  // Verify it's topically relevant
+                  const kwTopics = extractTopics(related.keyword);
+                  const isRelevant = kwTopics.length > 0 ||
+                    urlTopics.some(t => related.keyword.toLowerCase().includes(t.toLowerCase()));
+
+                  if (isRelevant || related.searchVolume > 50) {
+                    // Expansion keywords inherit the URL's classification
+                    results.push({
+                      id: processedIdx++,
+                      'Target-URL': url,
+                      'Keyword': related.keyword,
+                      'SV': related.searchVolume || 0,
+                      'Categoría': groupClassification.mainCategory,
+                      'Subcategoría 1': groupClassification.subCategory1 || 'Otros',
+                      'Subcategoría 2': groupClassification.subCategory2 || '(General)',
+                      'KW Intent': groupClassification.intent,
+                      '_confidence': 'medium',
+                      '_isExpansion': true,
+                      '_expansionSource': seedKeyword.keyword,
+                      '_sistrixEnriched': true,
+                      '_urlOrder': urlIdx
+                    });
+                  }
                 }
               }
+            } catch (e) {
+              console.warn('Expansion error for', seedKeyword.keyword, e);
             }
+
+            await new Promise(r => setTimeout(r, 200)); // Rate limiting
           }
 
           urlIdx++;

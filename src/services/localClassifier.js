@@ -1,6 +1,6 @@
 /**
  * Enhanced Local Classifier
- * Main Category from URL, Subcategories from keyword content
+ * Main Category from URL, Subcategories from URL + keyword content
  * All keywords in same URL share the same classification
  */
 
@@ -15,6 +15,18 @@ const URL_CATEGORY_MAP = [
   { pattern: /\/empresas\//i, category: 'Guías' },
   { pattern: /\/renta\//i, category: 'Guías' },
   { pattern: /\/guia/i, category: 'Guías' }
+];
+
+// URL patterns for Subcategory 1
+const URL_SUBCAT1_MAP = [
+  { pattern: /\/autonomos\//i, subcat: 'Autónomos' },
+  { pattern: /\/empresas\//i, subcat: 'Empresas' },
+  { pattern: /\/renta\//i, subcat: 'Renta' },
+  { pattern: /\/factura/i, subcat: 'Facturación' },
+  { pattern: /\/iva\//i, subcat: 'Trámites' },
+  { pattern: /\/modelo/i, subcat: 'Trámites' },
+  { pattern: /\/inversion/i, subcat: 'Inversiones' },
+  { pattern: /\/cripto/i, subcat: 'Inversiones' }
 ];
 
 /**
@@ -32,6 +44,41 @@ export const getCategoryFromURL = (url) => {
   return 'Otros';
 };
 
+/**
+ * Extract subcategory 1 from URL
+ */
+const getSubcat1FromURL = (url) => {
+  if (!url) return null;
+
+  for (const { pattern, subcat } of URL_SUBCAT1_MAP) {
+    if (pattern.test(url)) {
+      return subcat;
+    }
+  }
+
+  return null;
+};
+
+/**
+ * Extract topic words from URL slug
+ */
+const extractURLSlugTopics = (url) => {
+  if (!url) return [];
+
+  const path = url.replace(/https?:\/\/[^\/]+/, '').replace(/\/$/, '');
+  const segments = path.split('/').filter(s => s && s.length > 2);
+
+  if (segments.length === 0) return [];
+
+  const slug = segments[segments.length - 1];
+  return slug
+    .replace(/-/g, ' ')
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .split(' ')
+    .filter(w => w.length > 2);
+};
+
 // ============ DISCARD PATTERNS ============
 
 const COMPETITORS = [
@@ -41,7 +88,6 @@ const COMPETITORS = [
   /\bdebitoor\b/i, /\bfacturadirecta\b/i
 ];
 
-// Years to discard (past and future years)
 const YEAR_PATTERN = /\b(19\d{2}|20[0-3]\d)\b/;
 
 const shouldDiscard = (keyword) => {
@@ -49,8 +95,6 @@ const shouldDiscard = (keyword) => {
 
   if (kw.length <= 2) return { discard: true, reason: 'Muy corto' };
   if (/^\d+$/.test(kw)) return { discard: true, reason: 'Solo números' };
-
-  // Discard keywords with years
   if (YEAR_PATTERN.test(kw)) return { discard: true, reason: 'Contiene año' };
 
   for (const pattern of COMPETITORS) {
@@ -66,30 +110,33 @@ const SUBCATEGORY1_RULES = {
   'Autónomos': [
     /\bautónom[oa]s?\b/i, /\bautonomo[s]?\b/i, /\bfreelance/i,
     /\breta\b/i, /cuota.*autónom/i, /tarifa.*plana/i,
-    /pluriactividad/i, /aut[oó]nomo.*societario/i
+    /pluriactividad/i, /aut[oó]nomo.*societario/i,
+    /cuenta.*propia/i, /trabajador.*independiente/i
   ],
   'Renta': [
-    /declaraci[oó]n.*renta/i, /renta\s+\d{4}/i, /\birpf\b/i,
-    /borrador/i, /casilla/i, /devoluci[oó]n.*renta/i,
-    /declarar.*renta/i, /hacer.*renta/i
+    /declaraci[oó]n.*renta/i, /renta\b/i, /\birpf\b/i,
+    /borrador/i, /casilla/i, /devoluci[oó]n/i,
+    /declarar/i, /hacienda/i, /agencia.*tributaria/i
   ],
   'Empresas': [
-    /sociedad.*limitada/i, /\bs\.?l\.?\b/i, /\bs\.?a\.?\b/i,
+    /sociedad/i, /\bs\.?l\.?\b/i, /\bs\.?a\.?\b/i,
     /impuesto.*sociedades/i, /crear.*empresa/i, /montar.*empresa/i,
-    /registro.*mercantil/i, /\bempresa[s]?\b/i, /\bpyme/i
+    /registro.*mercantil/i, /\bempresa[s]?\b/i, /\bpyme/i,
+    /\bcorporat/i, /mercantil/i
   ],
   'Trámites': [
-    /modelo.*\d{3}/i, /\baeat\b/i, /agencia.*tributaria/i,
+    /modelo.*\d{3}/i, /\baeat\b/i,
     /\bnie\b/i, /\bnif\b/i, /\bcif\b/i, /certificado/i,
-    /tr[aá]mite/i, /\bmodelo\b/i
+    /tr[aá]mite/i, /\bmodelo\b/i, /formulario/i
   ],
   'Facturación': [
-    /factura/i, /facturaci[oó]n/i, /emitir.*factura/i,
-    /\brecibo/i, /\balbar[aá]n/i
+    /factura/i, /facturaci[oó]n/i,
+    /\brecibo/i, /\balbar[aá]n/i, /presupuesto/i
   ],
   'Inversiones': [
     /cripto/i, /bitcoin/i, /ethereum/i, /inversi[oó]n/i,
-    /acciones/i, /bolsa/i, /dividendo/i, /plusval[ií]a/i
+    /acciones/i, /bolsa/i, /dividendo/i, /plusval[ií]a/i,
+    /trading/i, /broker/i
   ],
   'TaxScouts': [
     /taxscouts/i, /tax\s*scouts/i
@@ -100,32 +147,44 @@ const SUBCATEGORY1_RULES = {
 
 const SUBCATEGORY2_RULES = {
   'Autónomos': {
-    'Ayudas y Beneficios': /ayuda|beneficio|subvenci[oó]n|bonificaci[oó]n|capitaliza/i,
-    'Declaraciones de Impuestos': /declaraci[oó]n|impuesto|trimestral|modelo.*\d/i,
-    'Epígrafes IAE': /ep[ií]grafe|iae|actividad.*econ[oó]mica/i,
-    'Ingresos y Gastos Deducibles': /ingreso|gasto|deducible|deducci[oó]n/i,
-    'Nuevos Autónomos': /nuevo|alta|empezar|comenzar|iniciar|primer/i,
-    'Profesiones': /profesi[oó]n|abogado|m[eé]dico|arquitecto|ingeniero/i,
-    'Trámites y Documentos': /tr[aá]mite|documento|formulario|solicitud/i
+    'Ayudas y Beneficios': /ayuda|beneficio|subvenci[oó]n|bonificaci[oó]n|capitaliza|paro/i,
+    'Declaraciones de Impuestos': /declaraci[oó]n|impuesto|trimestral|modelo.*\d|irpf|iva/i,
+    'Epígrafes IAE': /ep[ií]grafe|iae|actividad.*econ[oó]mica|cnae/i,
+    'Ingresos y Gastos Deducibles': /ingreso|gasto|deducible|deducci[oó]n|desgravar/i,
+    'Nuevos Autónomos': /nuevo|alta|empezar|comenzar|iniciar|primer|darse.*alta/i,
+    'Profesiones': /profesi[oó]n|abogado|m[eé]dico|arquitecto|ingeniero|consultor|coach/i,
+    'Trámites y Documentos': /tr[aá]mite|documento|formulario|solicitud|baja|cese/i,
+    '(General / Landing Principal)': /^aut[oó]nomo[s]?$|^freelance$/i
   },
   'Renta': {
-    '(General / Landing Principal)': /^declaraci[oó]n.*renta$|^renta\s*\d{4}$/i,
-    'Casos Excepcionales': /excepcional|especial|extranjero|herencia|premio/i,
-    'Casos Frecuentes': /frecuente|com[uú]n|normal|b[aá]sico/i,
-    'Deducciones': /deducci[oó]n|deducir|desgravar/i,
-    'Trámites y Plazos': /plazo|fecha|calendario|presentar|l[ií]mite/i
+    'Deducciones': /deducci[oó]n|deducir|desgravar|reducci[oó]n/i,
+    'Trámites y Plazos': /plazo|fecha|calendario|presentar|l[ií]mite|cu[aá]ndo/i,
+    'Casos Excepcionales': /excepcional|especial|extranjero|herencia|premio|loteria/i,
+    'Casos Frecuentes': /frecuente|com[uú]n|normal|b[aá]sico|general/i,
+    '(General / Landing Principal)': /^declaraci[oó]n.*renta$|^renta$|^irpf$/i
   },
   'Empresas': {
-    '(General / Landing Principal)': /^crear.*empresa$|^montar.*empresa$/i,
-    'Crear una Sociedad Limitada': /crear|constituir|montar|sl\b|sociedad.*limitada/i,
-    'Impuestos': /impuesto|tributo|fiscal|sociedades/i,
-    'Socios': /socio|participaci[oó]n|dividendo|junta/i,
-    'Trámites y Documentos Empresas': /tr[aá]mite|documento|registro|mercantil/i
+    'Crear una Sociedad Limitada': /crear|constituir|montar|abrir|nueva|sl\b|sociedad.*limitada/i,
+    'Impuestos': /impuesto|tributo|fiscal|sociedades|is\b/i,
+    'Socios': /socio|participaci[oó]n|dividendo|junta|accionista/i,
+    'Trámites y Documentos Empresas': /tr[aá]mite|documento|registro|mercantil|escritura/i,
+    '(General / Landing Principal)': /^empresa[s]?$|^pyme[s]?$|^sociedad$/i
   },
   'Trámites': {
-    '(General)': /tr[aá]mite|certificado|documento/i,
-    'Modelos': /modelo.*\d{3}|formulario/i,
-    'Otros Trámites': /nie|nif|cif|solicitud/i
+    'Modelos': /modelo.*\d{3}|modelo.*tributario/i,
+    'Otros Trámites': /nie|nif|cif|dni|certificado|solicitud/i,
+    '(General)': /^tr[aá]mite[s]?$|^certificado$/i
+  },
+  'Facturación': {
+    'Facturas': /factura|emitir|crear.*factura/i,
+    'Software': /programa|software|app|aplicaci[oó]n/i,
+    '(General)': /^facturaci[oó]n$/i
+  },
+  'Inversiones': {
+    'Criptomonedas': /cripto|bitcoin|ethereum|blockchain|token/i,
+    'Acciones y Bolsa': /acci[oó]n|bolsa|broker|trading/i,
+    'Impuestos Inversiones': /impuesto|declarar|plusval[ií]a|ganancia/i,
+    '(General)': /^inversi[oó]n|^inversiones$/i
   }
 };
 
@@ -147,10 +206,10 @@ const findSubcategory1 = (keyword) => {
 };
 
 /**
- * Find subcategory 2 from keyword
+ * Find subcategory 2 from keyword and subcategory 1
  */
 const findSubcategory2 = (keyword, subcat1) => {
-  if (!subcat1 || !SUBCATEGORY2_RULES[subcat1]) return '';
+  if (!subcat1 || !SUBCATEGORY2_RULES[subcat1]) return '(General)';
 
   const kw = keyword.toLowerCase();
   const rules = SUBCATEGORY2_RULES[subcat1];
@@ -161,7 +220,25 @@ const findSubcategory2 = (keyword, subcat1) => {
     }
   }
 
-  return '';
+  return '(General)';
+};
+
+/**
+ * Infer subcategory from URL slug words
+ */
+const inferSubcategoryFromSlug = (slugWords) => {
+  const text = slugWords.join(' ');
+
+  // Try to match subcategory 1
+  for (const [category, patterns] of Object.entries(SUBCATEGORY1_RULES)) {
+    for (const pattern of patterns) {
+      if (pattern.test(text)) {
+        return { subcat1: category, subcat2: findSubcategory2(text, category) };
+      }
+    }
+  }
+
+  return { subcat1: null, subcat2: null };
 };
 
 /**
@@ -172,7 +249,8 @@ const determineIntent = (keyword) => {
 
   const transactional = [
     /contratar/i, /solicitar/i, /comprar/i, /precio/i,
-    /programa/i, /software/i, /\bonline\b/i, /mejor/i
+    /programa/i, /software/i, /\bonline\b/i, /mejor/i,
+    /descargar/i, /gratis/i, /barato/i
   ];
 
   for (const pattern of transactional) {
@@ -206,7 +284,7 @@ export const extractTopics = (keyword) => {
 };
 
 /**
- * Classify a single keyword (without URL context)
+ * Classify a single keyword
  */
 const classifyKeyword = (keyword, historicalData = []) => {
   const kw = keyword.toLowerCase().trim();
@@ -248,6 +326,13 @@ export const classifyURLGroup = (url, keywords, historicalData = []) => {
   // Main category from URL
   const mainCategory = getCategoryFromURL(url);
 
+  // Try to get subcategory 1 from URL first
+  let urlSubcat1 = getSubcat1FromURL(url);
+
+  // Also try to infer from URL slug
+  const slugTopics = extractURLSlugTopics(url);
+  const slugInferred = inferSubcategoryFromSlug(slugTopics);
+
   // Count subcategory votes from all keywords
   const subcat1Votes = {};
   const subcat2Votes = {};
@@ -270,12 +355,23 @@ export const classifyURLGroup = (url, keywords, historicalData = []) => {
     }
   }
 
-  // Get winning subcategories
-  const subCategory1 = Object.entries(subcat1Votes)
-    .sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+  // Determine final subcategory 1 (priority: URL > slug > keywords)
+  let subCategory1 = urlSubcat1 || slugInferred.subcat1;
+  if (!subCategory1) {
+    const votedSubcat1 = Object.entries(subcat1Votes).sort((a, b) => b[1] - a[1])[0];
+    subCategory1 = votedSubcat1?.[0] || 'Otros';
+  }
 
-  const subCategory2 = Object.entries(subcat2Votes)
-    .sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+  // Determine final subcategory 2
+  let subCategory2 = slugInferred.subcat2;
+  if (!subCategory2 || subCategory2 === '(General)') {
+    const votedSubcat2 = Object.entries(subcat2Votes).sort((a, b) => b[1] - a[1])[0];
+    subCategory2 = votedSubcat2?.[0] || '(General)';
+  }
+
+  // Ensure we have valid subcategories
+  if (!subCategory1 || subCategory1 === 'null') subCategory1 = 'Otros';
+  if (!subCategory2) subCategory2 = '(General)';
 
   const intent = intents.Transactional > intents.Informational ? 'Transactional' : 'Informational';
 
@@ -284,7 +380,8 @@ export const classifyURLGroup = (url, keywords, historicalData = []) => {
     subCategory1,
     subCategory2,
     intent,
-    keywordResults
+    keywordResults,
+    urlTopics: slugTopics
   };
 };
 
@@ -304,7 +401,7 @@ export const classifyKeywordsLocally = async (keywords, historicalData = [], onP
         results.push({
           keyword,
           mainCategory: result.subCategory1 || 'Otros',
-          subCategory: result.subCategory2 || '',
+          subCategory: result.subCategory2 || '(General)',
           intent: result.intent,
           shouldDiscard: result.shouldDiscard,
           discardReason: result.discardReason,
