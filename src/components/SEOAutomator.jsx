@@ -11,8 +11,10 @@ import { getSistrixData, getSearchVolume, getRelatedKeywords } from '../services
 import { analyzeForExpansion, calculateSemanticSimilarity } from '../services/semanticExpansion';
 import { cleanKeywordsForURL, findSeedKeyword, extractURLTopic, areSameKeyword } from '../services/keywordCleaner';
 
+// Column order matching historical format
 const EXPORT_HEADERS = [
-  'Target-URL', 'Keyword', 'SV', 'Categoría', 'Subcategoría 1', 'Subcategoría 2', 'KW Intent'
+  'Main Category', 'Sub Category 1', 'Sub Category 2', 'Sub Category 3',
+  'Keyword', 'SV', 'KW Intent', 'Page Type', 'URL exists', 'Target-URL'
 ];
 
 const STORAGE_KEYS = {
@@ -257,16 +259,31 @@ const SEOAutomator = () => {
               await new Promise(r => setTimeout(r, 150));
             }
 
+            // Skip keywords with zero volume
+            if (finalVolume === 0 || !finalVolume) {
+              discarded.push({
+                id: processedIdx++,
+                keyword: kwData.keyword,
+                volume: 0,
+                url,
+                reason: 'Sin volumen de búsqueda'
+              });
+              continue;
+            }
+
             // All keywords in URL share the same categories
             results.push({
               id: processedIdx,
-              'Target-URL': url,
+              'Main Category': groupClassification.mainCategory,
+              'Sub Category 1': groupClassification.subCategory1 || '',
+              'Sub Category 2': groupClassification.subCategory2 || '',
+              'Sub Category 3': '',
               'Keyword': kwData.keyword,
               'SV': finalVolume,
-              'Categoría': groupClassification.mainCategory,
-              'Subcategoría 1': groupClassification.subCategory1 || 'Otros',
-              'Subcategoría 2': groupClassification.subCategory2 || '(General)',
               'KW Intent': groupClassification.intent,
+              'Page Type': '',
+              'URL exists': 'Yes',
+              'Target-URL': url,
               '_confidence': groupClassification.subCategory1 ? 'high' : 'medium',
               '_isExpansion': false,
               '_sistrixEnriched': sistrixEnriched,
@@ -307,13 +324,16 @@ const SEOAutomator = () => {
                     // Expansion keywords inherit the URL's classification
                     results.push({
                       id: processedIdx++,
-                      'Target-URL': url,
+                      'Main Category': groupClassification.mainCategory,
+                      'Sub Category 1': groupClassification.subCategory1 || '',
+                      'Sub Category 2': groupClassification.subCategory2 || '',
+                      'Sub Category 3': '',
                       'Keyword': related.keyword,
                       'SV': related.searchVolume || 0,
-                      'Categoría': groupClassification.mainCategory,
-                      'Subcategoría 1': groupClassification.subCategory1 || 'Otros',
-                      'Subcategoría 2': groupClassification.subCategory2 || '(General)',
                       'KW Intent': groupClassification.intent,
+                      'Page Type': '',
+                      'URL exists': 'Yes',
+                      'Target-URL': url,
                       '_confidence': 'medium',
                       '_isExpansion': true,
                       '_expansionSource': seedKeyword.keyword,

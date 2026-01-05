@@ -80,16 +80,31 @@ export const generateCSV = (data, headers) => {
 
 /**
  * Download data as CSV file
- * Uses UTF-8 BOM for proper accent handling in Excel
+ * Uses UTF-8 BOM and semicolon delimiter for proper Excel handling in Spanish
  * @param {Object[]} data - Data to export
  * @param {string[]} headers - Column headers
  * @param {string} filename - Output filename
  */
 export const downloadCSV = (data, headers, filename = 'export.csv') => {
-  const csvContent = generateCSV(data, headers);
-  // Add UTF-8 BOM for Excel to properly recognize accents
+  // Use semicolon as delimiter for better Excel compatibility in Spanish locales
+  const escapeField = (field) => {
+    const str = String(field || '');
+    if (str.includes(';') || str.includes('"') || str.includes('\n')) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  const csvLines = [
+    headers.join(';'),
+    ...data.map(row => headers.map(h => escapeField(row[h])).join(';'))
+  ];
+
+  const csvContent = csvLines.join('\r\n');
+
+  // UTF-8 BOM for Excel to recognize encoding
   const BOM = '\uFEFF';
-  const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

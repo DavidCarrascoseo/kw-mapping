@@ -107,6 +107,13 @@ const isSpam = (keyword) => {
 };
 
 /**
+ * Check if keyword contains a year (1900-2039)
+ */
+const containsYear = (keyword) => {
+  return /\b(19\d{2}|20[0-3]\d)\b/.test(keyword);
+};
+
+/**
  * Deduplicate keywords keeping the one with highest volume
  * Groups similar keywords and keeps the best one
  */
@@ -153,6 +160,12 @@ export const cleanKeywordsForURL = (url, keywords, urlTopics = []) => {
   for (const kw of keywords) {
     const keyword = kw.keyword || kw;
     const volume = kw.volume || 0;
+
+    // Check for years (1900-2039)
+    if (containsYear(keyword)) {
+      discarded.push({ keyword, volume, reason: 'Contiene año' });
+      continue;
+    }
 
     // Check for typos
     if (isTypo(keyword)) {

@@ -6,27 +6,36 @@
 
 // ============ URL TO MAIN CATEGORY MAPPING ============
 
+// Main category comes from URL path
+// /empresas/ → Empresas, /autonomos/ → Autónomos, etc.
 const URL_CATEGORY_MAP = [
   { pattern: /\/diccionario\//i, category: 'Diccionario' },
   { pattern: /\/blog\//i, category: 'Blog' },
   { pattern: /\/calculadora/i, category: 'Calculadoras' },
   { pattern: /\/servicios\//i, category: 'Servicios' },
-  { pattern: /\/autonomos\//i, category: 'Guías' },
-  { pattern: /\/empresas\//i, category: 'Guías' },
-  { pattern: /\/renta\//i, category: 'Guías' },
+  { pattern: /\/empresas\//i, category: 'Empresas' },
+  { pattern: /\/autonomos\//i, category: 'Autónomos' },
+  { pattern: /\/renta\//i, category: 'Renta' },
   { pattern: /\/guia/i, category: 'Guías' }
 ];
 
-// URL patterns for Subcategory 1
+// URL patterns for Subcategory 1 (second segment after main category)
+// e.g. /empresas/socios/ → Subcategoría 1: Socios
 const URL_SUBCAT1_MAP = [
-  { pattern: /\/autonomos\//i, subcat: 'Autónomos' },
-  { pattern: /\/empresas\//i, subcat: 'Empresas' },
-  { pattern: /\/renta\//i, subcat: 'Renta' },
+  { pattern: /\/socios\//i, subcat: 'Socios' },
+  { pattern: /\/impuestos\//i, subcat: 'Impuestos' },
+  { pattern: /\/crear-sociedad/i, subcat: 'Crear una Sociedad Limitada' },
+  { pattern: /\/tramites/i, subcat: 'Trámites y Documentos' },
+  { pattern: /\/ayudas/i, subcat: 'Ayudas y Beneficios' },
+  { pattern: /\/deducciones/i, subcat: 'Deducciones' },
   { pattern: /\/factura/i, subcat: 'Facturación' },
-  { pattern: /\/iva\//i, subcat: 'Trámites' },
-  { pattern: /\/modelo/i, subcat: 'Trámites' },
+  { pattern: /\/modelo/i, subcat: 'Modelos' },
   { pattern: /\/inversion/i, subcat: 'Inversiones' },
-  { pattern: /\/cripto/i, subcat: 'Inversiones' }
+  { pattern: /\/cripto/i, subcat: 'Criptomonedas' },
+  { pattern: /\/epigrafes/i, subcat: 'Epígrafes IAE' },
+  { pattern: /\/gastos/i, subcat: 'Ingresos y Gastos Deducibles' },
+  { pattern: /\/nuevos?-?autonomos?/i, subcat: 'Nuevos Autónomos' },
+  { pattern: /\/profesiones/i, subcat: 'Profesiones' }
 ];
 
 /**
