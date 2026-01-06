@@ -1,5 +1,5 @@
 import React from 'react';
-import { TrendingUp, Brain, Loader2, Link, Sparkles, FolderOpen, Filter } from 'lucide-react';
+import { TrendingUp, Brain, Loader2, Link, Sparkles, FolderOpen, Filter, Wand2 } from 'lucide-react';
 
 const ProcessingStep = ({
   processedCount,
@@ -12,6 +12,7 @@ const ProcessingStep = ({
   const phases = {
     loading: { label: 'Cargando datos...', desc: 'Leyendo el archivo CSV' },
     grouping: { label: 'Agrupando por URL...', desc: 'Organizando keywords por su URL asociada' },
+    generating: { label: 'Generando keywords desde URLs...', desc: 'Extrayendo keywords del slug de cada URL' },
     cleaning: { label: 'Limpiando keywords...', desc: 'Eliminando duplicados, typos y keywords irrelevantes' },
     classifying: { label: 'Clasificando keywords...', desc: 'Analizando y categorizando cada keyword' },
     processing: { label: 'Procesando resultados...', desc: 'Construyendo el mapeo final' },
@@ -28,6 +29,7 @@ const ProcessingStep = ({
           <Loader2 className="animate-spin text-indigo-600" size={64} />
           {currentPhase === 'classifying' && <Brain className="absolute inset-0 m-auto text-indigo-400" size={28} />}
           {currentPhase === 'grouping' && <FolderOpen className="absolute inset-0 m-auto text-indigo-400" size={28} />}
+          {currentPhase === 'generating' && <Wand2 className="absolute inset-0 m-auto text-purple-400" size={28} />}
           {currentPhase === 'cleaning' && <Filter className="absolute inset-0 m-auto text-orange-400" size={28} />}
           {currentPhase === 'processing' && <Link className="absolute inset-0 m-auto text-indigo-400" size={28} />}
           {currentPhase === 'expanding' && <Sparkles className="absolute inset-0 m-auto text-amber-400" size={28} />}
@@ -41,6 +43,9 @@ const ProcessingStep = ({
         )}
         {currentPhase === 'cleaning' && (
           <Filter className="text-orange-500 animate-pulse" size={48} />
+        )}
+        {currentPhase === 'generating' && (
+          <Wand2 className="text-purple-500 animate-pulse" size={48} />
         )}
       </div>
 

@@ -10,6 +10,7 @@ import { classifyKeywordsLocally, classifyURLGroup, extractTopics } from '../ser
 import { getSistrixData, getSearchVolume, getRelatedKeywords } from '../services/sistrix';
 import { analyzeForExpansion, calculateSemanticSimilarity } from '../services/semanticExpansion';
 import { cleanKeywordsForURL, findSeedKeyword, extractURLTopic, areSameKeyword } from '../services/keywordCleaner';
+import { generateKeywordsFromURL } from '../services/urlKeywordGenerator';
 
 // Column order matching historical format
 const EXPORT_HEADERS = [
@@ -184,6 +185,31 @@ const SEOAutomator = () => {
 
         setUrlOrder(urlOrderList);
         setTotalCount(urlOrderList.length);
+
+        // Step 1.5: Generate keywords from URLs and add to groups
+        setCurrentPhase('generating');
+        for (const url of urlOrderList) {
+          const generatedKeywords = generateKeywordsFromURL(url);
+          const existingKeywords = urlGroups.get(url);
+
+          for (const genKw of generatedKeywords) {
+            // Check if this keyword already exists (case insensitive)
+            const exists = existingKeywords.some(
+              kw => kw.keyword.toLowerCase() === genKw.toLowerCase() ||
+                    areSameKeyword(kw.keyword, genKw)
+            );
+
+            if (!exists) {
+              // Add generated keyword with volume 0 (will need SISTRIX or be discarded)
+              existingKeywords.push({
+                keyword: genKw,
+                volume: 0,
+                originalVolume: '0',
+                _isGenerated: true
+              });
+            }
+          }
+        }
 
         // Step 2: Clean and classify each URL group
         setCurrentPhase('cleaning');
